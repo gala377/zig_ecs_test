@@ -44,46 +44,21 @@ pub const LuaState = struct {
     const Context = struct {
         allocator: std.mem.Allocator,
 
-        pub const luat = enum {
-            string,
-            table,
-            function,
-            userdata,
-            thread,
-            different,
-        };
-
-        fn osizeToType(code: usize) Context.luat {
-            return switch (code) {
-                lua.LUA_TSTRING => .string,
-                lua.LUA_TTABLE => .table,
-                lua.LUA_TFUNCTION => .function,
-                lua.LUA_TUSERDATA => .userdata,
-                lua.LUA_TTHREAD => .thread,
-                else => .different,
-            };
-        }
-
         /// Called from lua to allocate, reallocate and free memory.
         pub fn alloc(self: *Context, ptr: ?*anyopaque, osize: usize, nsize: usize) callconv(.C) ?*anyopaque {
-            //std.debug.print("Allocation\n", .{});
             if (ptr == null and nsize != 0) {
-                // std.debug.print("\tAlloc type={}, osize={}, nsize={}\n", .{ t, osize, nsize });
                 const casted: ?*anyopaque = @ptrCast(self.allocator.rawAlloc(nsize, std.mem.Alignment.@"8", 0));
                 return casted orelse {
-                    // std.debug.print("\t!!!!!!!!!!1Alloc returned NULL!!!!!!!!!!!!\n", .{});
                     return null;
                 };
             }
             if (ptr != null and nsize == 0) {
-                // std.debug.print("\tFree osize={}\n", .{osize});
                 const mem: [*]u8 = @ptrCast(ptr);
                 const asSlice: []u8 = mem[0..osize];
                 self.allocator.rawFree(asSlice, std.mem.Alignment.@"8", 0);
                 return null;
             }
             if (ptr != null and nsize != 0) {
-                //std.debug.print("\tRemap osize={} nsize={}\n", .{ osize, nsize });
                 const mem: [*]u8 = @ptrCast(ptr);
                 const asSlice: []u8 = mem[0..osize];
                 const actual = self.allocator.rawRemap(asSlice, std.mem.Alignment.@"8", nsize, 0) orelse brk: {
@@ -94,16 +69,9 @@ pub const LuaState = struct {
                 };
                 const casted: ?*anyopaque = @ptrCast(actual);
                 return casted orelse {
-                    // std.debug.print("!!!!!!!! Remap returned NULL!!!!!!!\n", .{});
                     return null;
                 };
             }
-            if (ptr == null and nsize == 0) {
-                //std.debug.print("\tBoth null osize={}\n", .{osize});
-                return null;
-            }
-
-            //std.debug.print("\tsomething else osize={}, nsize={}\n", .{ osize, nsize });
             return null;
         }
     };
