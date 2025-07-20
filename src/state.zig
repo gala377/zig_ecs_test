@@ -1,5 +1,4 @@
 const std = @import("std");
-const debug = @import("utils/debug.zig");
 const lua = @cImport({
     @cInclude("lua.h");
     @cInclude("lualib.h");
@@ -45,25 +44,66 @@ pub const LuaState = struct {
     const Context = struct {
         allocator: std.mem.Allocator,
 
+        pub const luat = enum {
+            string,
+            table,
+            function,
+            userdata,
+            thread,
+            different,
+        };
+
+        fn osizeToType(code: usize) Context.luat {
+            return switch (code) {
+                lua.LUA_TSTRING => .string,
+                lua.LUA_TTABLE => .table,
+                lua.LUA_TFUNCTION => .function,
+                lua.LUA_TUSERDATA => .userdata,
+                lua.LUA_TTHREAD => .thread,
+                else => .different,
+            };
+        }
+
         /// Called from lua to allocate, reallocate and free memory.
         pub fn alloc(self: *Context, ptr: ?*anyopaque, osize: usize, nsize: usize) callconv(.C) ?*anyopaque {
+            //std.debug.print("Allocation\n", .{});
+            if (ptr == null and nsize != 0) {
+                // std.debug.print("\tAlloc type={}, osize={}, nsize={}\n", .{ t, osize, nsize });
+                const casted: ?*anyopaque = @ptrCast(self.allocator.rawAlloc(nsize, std.mem.Alignment.@"8", 0));
+                return casted orelse {
+                    // std.debug.print("\t!!!!!!!!!!1Alloc returned NULL!!!!!!!!!!!!\n", .{});
+                    return null;
+                };
+            }
             if (ptr != null and nsize == 0) {
+                // std.debug.print("\tFree osize={}\n", .{osize});
                 const mem: [*]u8 = @ptrCast(ptr);
                 const asSlice: []u8 = mem[0..osize];
-                self.allocator.rawFree(asSlice, std.mem.Alignment.@"64", 0);
+                self.allocator.rawFree(asSlice, std.mem.Alignment.@"8", 0);
                 return null;
             }
             if (ptr != null and nsize != 0) {
+                //std.debug.print("\tRemap osize={} nsize={}\n", .{ osize, nsize });
                 const mem: [*]u8 = @ptrCast(ptr);
                 const asSlice: []u8 = mem[0..osize];
-                return @ptrCast(self.allocator.rawRemap(asSlice, std.mem.Alignment.@"64", nsize, 0));
-            }
-            if (ptr == null and nsize != 0) {
-                return @ptrCast(self.allocator.rawAlloc(nsize, std.mem.Alignment.@"64", 0));
+                const actual = self.allocator.rawRemap(asSlice, std.mem.Alignment.@"8", nsize, 0) orelse brk: {
+                    const new = self.allocator.rawAlloc(nsize, std.mem.Alignment.@"8", 0) orelse break :brk null;
+                    @memcpy(new, asSlice);
+                    self.allocator.rawFree(asSlice, std.mem.Alignment.@"8", 0);
+                    break :brk new;
+                };
+                const casted: ?*anyopaque = @ptrCast(actual);
+                return casted orelse {
+                    // std.debug.print("!!!!!!!! Remap returned NULL!!!!!!!\n", .{});
+                    return null;
+                };
             }
             if (ptr == null and nsize == 0) {
+                //std.debug.print("\tBoth null osize={}\n", .{osize});
                 return null;
             }
+
+            //std.debug.print("\tsomething else osize={}, nsize={}\n", .{ osize, nsize });
             return null;
         }
     };
@@ -154,6 +194,8 @@ pub const LuaState = struct {
         return lua.lua_gettop(self.state);
     }
 
+    /// Make a persistant reference to the object at the top of the stack.
+    /// Also pops the value from the top of the stack.
     pub fn makeRef(self: Self) !Ref {
         try self.assertStackNotEmpty();
         const ref = lua.luaL_ref(self.state, lua.LUA_REGISTRYINDEX);

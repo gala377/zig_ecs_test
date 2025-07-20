@@ -4,6 +4,11 @@ pub const Value = @import("value.zig").Value;
 pub const Pair = @import("value.zig").Pair;
 pub const Ref = @import("ref.zig").Ref;
 pub const State = @import("state.zig").LuaState;
+pub const clib = @cImport({
+    @cInclude("lua.h");
+    @cInclude("lualib.h");
+    @cInclude("lauxlib.h");
+});
 
 const std = @import("std");
 
