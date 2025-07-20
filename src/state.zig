@@ -140,6 +140,10 @@ pub const LuaState = struct {
         lua.lua_pop(self.state, 1);
     }
 
+    pub fn popUnchecked(self: Self) void {
+        lua.lua_pop(self.state, 1);
+    }
+
     /// Get value from top of the stack and pop it.
     ///
     /// Returns error if the stack is empty.

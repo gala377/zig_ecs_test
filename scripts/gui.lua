@@ -1,16 +1,14 @@
 local state = {}
 
-function state.new() end
-
 function state:init()
 	return {
 		"spawn",
 		{
 			"raygui:button",
 			title = "Close application",
-			position = { 0, 0 },
+			pos = { 0, 0 },
 			size = { 100, 100 },
-			onCall = self.onClicked,
+			callback = self.onClicked,
 		},
 	}
 end

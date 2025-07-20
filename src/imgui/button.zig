@@ -10,6 +10,11 @@ pub const Button = struct {
         title: [:0]const u8,
         size: struct { x: f32, y: f32 },
         position: struct { x: f32, y: f32 },
+
+        pub fn deinit(self: ScriptArgs, allocator: std.mem.Allocator) void {
+            self.callback.release();
+            allocator.free(self.title);
+        }
     };
     initArgs: ScriptArgs,
     game: *Game,

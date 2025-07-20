@@ -2,6 +2,7 @@ const std = @import("std");
 const lua = @import("lua_lib");
 const rl = @import("raylib");
 const rg = @import("raygui");
+const commands = @import("commands.zig");
 
 pub const Size = struct {
     width: i32,
@@ -31,6 +32,8 @@ pub const Game = struct {
     // internal state
     shouldClose: bool,
 
+    customCommands: std.StringHashMap(commands.UserDefinedCommand),
+
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
         const state = try lua.State.init(allocator);
         return .{
@@ -38,6 +41,7 @@ pub const Game = struct {
             .luaState = state,
             .shouldClose = false,
             .options = options,
+            .customCommands = .init(allocator),
         };
     }
 
@@ -57,5 +61,8 @@ pub const Game = struct {
 
     pub fn deinit(self: *Self) void {
         self.luaState.deinit();
+        for (self.customCommands.valueIterator()) |c| {
+            c.deinit(self.allocator, self.luaState);
+        }
     }
 };

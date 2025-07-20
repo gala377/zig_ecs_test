@@ -1,40 +1,94 @@
 const std = @import("std");
+
+const luac = @import("lua_lib").clib;
 const Ref = @import("lua_lib").Ref;
 const State = @import("lua_lib").State;
-const luac = @import("lua_lib").clib;
+
 const imgui = @import("imgui/root.zig");
 
 pub const Command = union(enum) {
     Spawn: SpawnCommand,
     App: AppCommand,
+    UserDefined: UserDefinedCommand,
+
+    pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .Spawn => |s| {
+                s.deinit(allocator);
+            },
+            .App => |a| {
+                a.deinit(allocator);
+            },
+            .UserDefined => |u| {
+                u.deinit(allocator);
+            },
+        }
+    }
 };
 
 pub const SpawnCommand = union(enum) {
     RayGui: RayGuiObjects,
+
+    pub fn deinit(self: SpawnCommand, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .RayGui => |r| {
+                r.deinit(allocator);
+            },
+        }
+    }
 };
 
-pub const AppCommand = enum {
+pub const AppCommand = union(enum) {
     Close,
+    MakeCommand: struct {
+        command: []const u8,
+        callback: Ref,
+    },
+
+    pub fn deinit(self: AppCommand, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .Close => {},
+            .MakeCommand => |m| {
+                allocator.free(m.command);
+                m.callback.release();
+            },
+        }
+    }
+};
+
+pub const UserDefinedCommand = struct {
+    command: []const u8,
+    callback: Ref,
+
+    pub fn deinit(self: UserDefinedCommand, allocator: std.mem.Allocator) void {
+        allocator.free(self.command);
+        self.callback.release();
+    }
 };
 
 pub const RayGuiObjects = union(enum) {
     Button: imgui.Button.ScriptArgs,
+
+    pub fn deinit(self: RayGuiObjects, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .Button => |b| {
+                b.deinit(allocator);
+            },
+        }
+    }
 };
 
 pub fn getCommands(table: Ref, state: State, allocator: std.mem.Allocator) ![]Command {
     state.pushRef(table);
-    const commands = getCommandsImpl(state, allocator) catch |err| {
-        try state.pop();
-        return err;
-    };
-    try state.pop();
+    defer state.popUnchecked();
+    const commands = getCommandsImpl(state, allocator);
     return commands;
 }
 
 fn getCommandsImpl(L: State, allocator: std.mem.Allocator) ![]Command {
-    luac.lua_pushnil(L.state);
     const tableIndex = -2;
     const valueIndex = -1;
+    luac.lua_pushnil(L.state);
     if (luac.lua_next(L.state, tableIndex) == 0) {
         // empty table, no commands
         return &.{};
@@ -53,74 +107,57 @@ fn parseSingleCommand(L: State, allocator: std.mem.Allocator) !Command {
     const tableIndex = -2;
     const keyIndex = -2;
     const valueIndex = -1;
-    if (luac.lua_type(L.state, valueIndex) != luac.LUA_TSTRING) {
-        // pop key and value that have been pushed by lua_next
-        luac.lua_pop(L.state, 2);
-        return error.commandHasToBeString;
-    }
-    const command = luac.lua_tolstring(L.state, valueIndex, null);
-    const cmd: []const u8 = std.mem.span(command);
+    assertType(L, valueIndex, .string) catch |err| {
+        // expected command
+        popKeyValue(L);
+        return err;
+    };
+    const cmd = stringView(L, valueIndex);
 
     if (std.mem.eql(u8, cmd, "app:close")) {
-        luac.lua_pop(L.state, 1);
         // cmd is invalidated
-        if (luac.lua_next(L.state, tableIndex) != 0) {
-            // pop key and value that have been pushed by lua_next
-            luac.lua_pop(L.state, 2);
-            return error.moreArgumentsThanExpected;
-        }
+        assertFinished(L, tableIndex) catch |err| {
+            popKeyValue(L);
+            return err;
+        };
         return .{
             .App = .Close,
         };
     }
-    if (std.mem.eql(u8, cmd, "spawn")) {
-        std.debug.print("parsing spawn\n", .{});
-        luac.lua_pop(L.state, 1);
-        std.debug.print("poping value of spawn\n", .{});
-        // cmd is invalidated
+    if (std.mem.eql(u8, cmd, "app:makecommand")) {
+        // cmd is invalidated;
+        popValue(L);
         if (luac.lua_next(L.state, tableIndex) == 0) {
-            std.debug.print("next value does not exist\n", .{});
             return error.expectedArgument;
         }
+    }
 
-        std.debug.print("changed value to next\n", .{});
+    if (std.mem.eql(u8, cmd, "spawn")) {
+        // cmd is invalidated
+        try expectNext(L, tableIndex);
+
         // value is now a table of arguments
-        if (luac.lua_type(L.state, valueIndex) != luac.LUA_TTABLE) {
-            std.debug.print("next value is not a lua table\n", .{});
-            // pop key and value that have been pushed by lua_next
-            luac.lua_pop(L.state, 2);
-            return error.expectedTable;
-        }
+        assertType(L, valueIndex, .table) catch |err| {
+            popKeyValue(L);
+            return err;
+        };
         // we don't need to pop a value yet, we will use it to
         // recursively iterate over the arguments
-        luac.lua_pushnil(L.state);
-        std.debug.print("iterating arguments table\n", .{});
-        if (luac.lua_next(L.state, tableIndex) == 0) {
-            std.debug.print("arguments table is empty\n", .{});
-            // pop key and value that have been pushed by lua_next from the previous iteration
-            luac.lua_pop(L.state, 2);
-            return error.expectedArgument;
-        }
+        startExpectNext(L, tableIndex) catch |err| {
+            popKeyValue(L);
+            return err;
+        };
 
-        std.debug.print("got first argument\n", .{});
-
-        if (luac.lua_type(L.state, valueIndex) != luac.LUA_TSTRING) {
-            std.debug.print("object to spawn is not string\n", .{});
+        assertType(L, valueIndex, .string) catch |err| {
             // pop key and value that have been pushed by lua_next
             // as well as table and key pushed by previous iteration
-            luac.lua_pop(L.state, 4);
-            return error.expectedString;
-        }
+            pop(L, 4);
+            return err;
+        };
 
-        std.debug.print("getting object to spawn\n", .{});
-        const objc = luac.lua_tolstring(L.state, valueIndex, null);
-        const obj: []const u8 = std.mem.span(objc);
+        const obj = stringView(L, valueIndex);
         if (std.mem.eql(u8, obj, "raygui:button")) {
-            std.debug.print("object is raygui:button, popping the value to get next pair.\n", .{});
             luac.lua_pop(L.state, 1);
-
-            std.debug.print("moving to next argument\n", .{});
-            // obj is now invalid
 
             // TODO: techincally it would be nice to errdeffer this otherwise we have a leak
             // but we would also need to be aware of errdeffering up the stack as we would
@@ -147,17 +184,10 @@ fn parseSingleCommand(L: State, allocator: std.mem.Allocator) !Command {
                         luac.lua_pop(L.state, 4);
                         return error.expectedString;
                     }
-                    var slen: usize = 0;
-                    const str = luac.lua_tolstring(L.state, valueIndex, &slen);
-                    if (str == null) {
-                        luac.lua_pop(L.state, 4);
-                        return error.invalidLuaString;
-                    }
-                    const slice = allocator.dupeZ(u8, str[0..slen]) catch |err| {
+                    title = getString(L, valueIndex, allocator) catch |err| {
                         luac.lua_pop(L.state, 4);
                         return err;
                     };
-                    title = slice;
                 } else if (std.mem.eql(u8, keyspan, "pos")) {
                     const parsed = parseVec2(L) catch |err| {
                         luac.lua_pop(L.state, 4);
@@ -187,18 +217,12 @@ fn parseSingleCommand(L: State, allocator: std.mem.Allocator) !Command {
 
                 luac.lua_pop(L.state, 1);
             }
-            std.debug.print("Parsed all keys, popping table with arguments\n", .{});
-            // pop the arguments table from the top
-            luac.lua_pop(L.state, 1);
-            // sanity checks
-            if (luac.lua_next(L.state, tableIndex) != 0) {
-                std.debug.print("There are more arguments remaining (after spawn)", .{});
-                luac.lua_pop(L.state, 2);
-                return error.unexpectedArgument;
-            }
+            assertFinished(L, tableIndex) catch |err| {
+                popKeyValue(L);
+                return err;
+            };
             if (title == null or position == null or size == null or callback == null) {
-                std.debug.print("Not every key has been filled", .{});
-                luac.lua_pop(L.state, 2);
+                popKeyValue(L);
                 return error.missingKeyWordArgument;
             }
             // uff everythin is okay we can finally pop the actual table;
@@ -216,53 +240,41 @@ fn parseSingleCommand(L: State, allocator: std.mem.Allocator) !Command {
 
         // pop key and value that have been pushed by lua_next
         // as well as table and key pushed by previous iteration
-        luac.lua_pop(L.state, 4);
+        pop(L, 4);
         return error.unknownObjectToSpawn;
     }
 
     // pop key and value that have been pushed by lua_next
-    luac.lua_pop(L.state, 2);
+    popKeyValue(L);
     return error.undefinedCommand;
 }
 
 fn parseVec2(L: State) !Vec2 {
     const valueIndex = -1;
     const tableIndex = -2;
-    if (luac.lua_type(L.state, valueIndex) != luac.LUA_TTABLE) {
-        return error.expectedTable;
-    }
-    // Start iteration
-    luac.lua_pushnil(L.state);
+    try assertType(L, valueIndex, .table);
 
     // Extract X
-    if (luac.lua_next(L.state, tableIndex) == 0) {
-        return error.expectedArgument;
-    }
-    if (luac.lua_type(L.state, valueIndex) != luac.LUA_TNUMBER) {
-        luac.lua_pop(L.state, 2);
-        return error.expectedNumber;
-    }
+    try startExpectNext(L, tableIndex);
+    assertType(L, valueIndex, .number) catch |err| {
+        popKeyValue(L);
+        return err;
+    };
     const x = luac.lua_tonumberx(L.state, valueIndex, null);
 
-    // next key
-    luac.lua_pop(L.state, 1);
-
     // Extract Y
-    if (luac.lua_next(L.state, tableIndex) == 0) {
-        return error.expectedArgument;
-    }
-    if (luac.lua_type(L.state, valueIndex) != luac.LUA_TNUMBER) {
-        luac.lua_pop(L.state, 2);
-        return error.expectedNumber;
-    }
+    try expectNext(L, tableIndex);
+    assertType(L, valueIndex, .number) catch |err| {
+        popKeyValue(L);
+        return err;
+    };
     const y = luac.lua_tonumberx(L.state, valueIndex, null);
 
     // sanity check
-    luac.lua_pop(L.state, 1);
-    if (luac.lua_next(L.state, tableIndex) != 0) {
-        luac.lua_pop(L.state, 2);
-        return error.unexpectedArgument;
-    }
+    assertFinished(L, tableIndex) catch |err| {
+        popKeyValue(L);
+        return err;
+    };
     return .{ .x = @floatCast(x), .y = @floatCast(y) };
 }
 
@@ -271,27 +283,71 @@ const Vec2 = struct {
     y: f32,
 };
 
-pub fn deinit(cmd: *Command, allocator: std.mem.Allocator) void {
-    switch (cmd.*) {
-        .App => |*appcmd| switch (appcmd.*) {
-            .Close => {
-                //nothing allocated, nothing to do
-            },
-        },
-        .Spawn => |*spwncmd| switch (spwncmd.*) {
-            .RayGui => |*rgobj| switch (rgobj.*) {
-                .Button => |*button| {
-                    allocator.free(button.*.title);
-                    button.callback.release();
-                },
-            },
-        },
+pub fn deinitSlice(cmds: []Command, allocator: std.mem.Allocator) void {
+    for (cmds) |*cmd| {
+        cmd.deinit(allocator);
+    }
+    allocator.free(cmds);
+}
+
+fn getString(L: State, index: c_int, allocator: std.mem.Allocator) ![:0]const u8 {
+    var slen: usize = 0;
+    const str = luac.lua_tolstring(L.state, index, &slen);
+    if (str == null) {
+        return error.invalidLuaString;
+    }
+    return allocator.dupeZ(u8, str[0..slen]) catch |err| {
+        return err;
+    };
+}
+
+inline fn assertType(L: State, index: c_int, t: LuaTypes) !void {
+    if (luac.lua_type(L.state, index) != @intFromEnum(t)) {
+        return error.luaTypeError;
     }
 }
 
-pub fn deinitSlice(cmds: []Command, allocator: std.mem.Allocator) void {
-    for (cmds) |*cmd| {
-        deinit(cmd, allocator);
+inline fn assertFinished(L: State, index: c_int) !void {
+    popValue(L);
+    if (luac.lua_next(L.state, index) != 0) {
+        return error.unexpectedArgument;
     }
-    allocator.free(cmds);
+}
+
+inline fn pop(L: State, num: c_int) void {
+    luac.lua_pop(L.state, num);
+}
+
+inline fn popValue(L: State) void {
+    pop(L, 1);
+}
+
+inline fn popKeyValue(L: State) void {
+    pop(L, 2);
+}
+
+inline fn expectNext(L: State, tindex: c_int) !void {
+    popValue(L);
+    if (luac.lua_next(L.state, tindex) == 0) {
+        return error.expectedArgument;
+    }
+}
+
+inline fn startExpectNext(L: State, tindex: c_int) !void {
+    luac.lua_pushnil(L.state);
+    if (luac.lua_next(L.state, tindex) == 0) {
+        return error.expectedArgument;
+    }
+}
+
+const LuaTypes = enum(c_int) {
+    string = luac.LUA_TSTRING,
+    table = luac.LUA_TTABLE,
+    number = luac.LUA_TNUMBER,
+    function = luac.LUA_TFUNCTION,
+};
+
+inline fn stringView(L: State, index: c_int) []const u8 {
+    const command = luac.lua_tolstring(L.state, index, null);
+    return std.mem.span(command);
 }
