@@ -60,13 +60,14 @@ fn testCommands(allocator: std.mem.Allocator) !void {
     defer state.deinit();
     try state.load(
         \\ return {
-        \\    "spawn", {
+        \\    { "spawn", {
         \\         "raygui:button", 
         \\          title = "hello",  
         \\          size = {100, 200},
         \\          pos = {1, 2},
         \\          callback = function() end,
-        \\      }
+        \\      } },
+        \\    { "app:log", "hello" }
         \\  };
     );
     const ref = try state.makeRef();
@@ -82,10 +83,11 @@ fn testCommands(allocator: std.mem.Allocator) !void {
         .Spawn => |spw| switch (spw) {
             .RayGui => |rg| switch (rg) {
                 .Button => |args| {
-                    std.debug.print("got spawn raygui:button with {any}", .{args});
+                    std.debug.print("got spawn raygui:button with {any}\n", .{args});
                 },
             },
         },
-        else => @panic("oh well"),
+        else => @panic("oh well\n"),
     }
+    std.debug.print("All {any}\n", .{parsed});
 }

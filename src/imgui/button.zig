@@ -3,13 +3,14 @@ const rg = @import("raygui");
 const rl = @import("raylib");
 const std = @import("std");
 const Game = @import("../game.zig").Game;
+const Vec2 = @import("../commands.zig").Vec2;
 
 pub const Button = struct {
     pub const ScriptArgs = struct {
         callback: lua.Ref,
         title: [:0]const u8,
-        size: struct { x: f32, y: f32 },
-        position: struct { x: f32, y: f32 },
+        size: Vec2,
+        position: Vec2,
 
         pub fn deinit(self: ScriptArgs, allocator: std.mem.Allocator) void {
             self.callback.release();
