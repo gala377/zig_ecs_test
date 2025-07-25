@@ -1,4 +1,3 @@
-pub const String = @import("utils/string.zig");
 pub const state = @import("state.zig");
 pub const Value = @import("value.zig").Value;
 pub const Pair = @import("value.zig").Pair;

@@ -1,1 +1,2 @@
-pub const Button = @import("./button.zig").Button;
+pub const components = @import("components.zig");
+pub const systems = @import("systems.zig");

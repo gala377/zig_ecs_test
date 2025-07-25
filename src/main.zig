@@ -1,6 +1,8 @@
 const std = @import("std");
 const lua = @import("lua_lib");
 const Game = @import("game.zig").Game;
+const imgui = @import("imgui/root.zig");
+const Scene = @import("scene.zig").Scene;
 
 const luac = lua.clib;
 const commands = @import("commands.zig");
@@ -20,74 +22,41 @@ pub fn main() !void {
             },
         }
     }
-    // runGame(gpa.allocator());
+    try runGame(gpa.allocator());
     //try testLua(gpa.allocator());
-    try testCommands(gpa.allocator());
     //try testLoad(gpa.allocator());
 }
 
-fn runGame(alloactor: std.mem.Allocator) !void {
-    var game = try Game.init(alloactor, .{ .window = .{ .targetFps = 60, .title = "Hello?", .size = .{
+fn runGame(allocator: std.mem.Allocator) !void {
+    var game = try Game.init(allocator, .{ .window = .{ .targetFps = 60, .title = "Hello?", .size = .{
         .width = 1080,
         .height = 720,
     } } });
     defer game.deinit();
+    var scene = Scene.init(0, allocator);
+    const text: [:0]const u8 = "hello";
+    const title: [:0]u8 = try scene.scene_allocator.allocSentinel(u8, text.len, 0);
+    @memcpy(title, text);
+    try scene.allocComponent("imgui:button", imgui.components.Button{
+        .clicked = false,
+        .pos = .{ .x = 50.0, .y = 50.0 },
+        .size = .{ .x = 200.0, .y = 100.0 },
+        .title = @ptrCast(title),
+    });
+    try game.setInitialScene(scene);
+    try game.addSystem(imgui.systems.draw_imgui);
+    try game.addSystem(print_on_button_click);
+
     try game.run();
 }
 
-fn testLoad(allocator: std.mem.Allocator) !void {
-    var state = try lua.State.init(allocator);
-    defer state.deinit();
-    try state.load(
-        \\ return {"err", {"hello", size = {1, 2}}};
-    );
-    try state.pop();
-}
-
-fn testLua(allocator: std.mem.Allocator) !void {
-    var state = try lua.State.init(allocator);
-    defer state.deinit();
-    try state.load("return \"12345\"");
-    var len: usize = 0;
-    const string = luac.lua_tolstring(state.state, -1, &len);
-    const rawlen = luac.lua_rawlen(state.state, -1);
-    std.debug.print("string is {s}\n", .{string});
-    std.debug.print("size of the string is {}\n, rawlen is {}\n", .{ len, rawlen });
-}
-
-fn testCommands(allocator: std.mem.Allocator) !void {
-    var state = try lua.State.init(allocator);
-    defer state.deinit();
-    try state.load(
-        \\ return {
-        \\    { "spawn", {
-        \\         "raygui:button", 
-        \\          title = "hello",  
-        \\          size = {100, 200},
-        \\          pos = {1, 2},
-        \\          callback = function() end,
-        \\      } },
-        \\    { "app:log", "hello" }
-        \\  };
-    );
-    const ref = try state.makeRef();
-    defer ref.release();
-    const parsed = try commands.getCommands(ref, state, allocator);
-    // free commands
-    defer commands.deinitSlice(parsed, allocator);
-
-    std.debug.print("Commands len is {}\n", .{parsed.len});
-    const stackSize = state.stackSize();
-    std.debug.print("Stack size is {}\n", .{stackSize});
-    switch (parsed[0]) {
-        .Spawn => |spw| switch (spw) {
-            .RayGui => |rg| switch (rg) {
-                .Button => |args| {
-                    std.debug.print("got spawn raygui:button with {any}\n", .{args});
-                },
-            },
-        },
-        else => @panic("oh well\n"),
+fn print_on_button_click(game: *Game) void {
+    for (game.currentScene.?.components.items) |*comp| {
+        if (std.mem.eql(u8, comp.name, "imgui:button")) {
+            const button: *imgui.components.Button = @alignCast(@ptrCast(comp.pointer));
+            if (button.clicked) {
+                std.debug.print("The button has been clicked\n", .{});
+            }
+        }
     }
-    std.debug.print("All {any}\n", .{parsed});
 }

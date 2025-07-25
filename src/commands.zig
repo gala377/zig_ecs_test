@@ -6,6 +6,8 @@ const State = @import("lua_lib").State;
 
 const imgui = @import("imgui/root.zig");
 
+const Vec2 = @import("utils.zig").Vec2;
+
 pub const Command = union(enum) {
     Spawn: SpawnCommand,
     App: AppCommand,
@@ -271,11 +273,6 @@ fn parseVec2(L: State) !Vec2 {
     };
     return .{ .x = @floatCast(x), .y = @floatCast(y) };
 }
-
-pub const Vec2 = struct {
-    x: f32,
-    y: f32,
-};
 
 pub fn deinitSlice(cmds: []Command, allocator: std.mem.Allocator) void {
     for (cmds) |*cmd| {

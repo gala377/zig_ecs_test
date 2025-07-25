@@ -132,6 +132,15 @@ pub const LuaState = struct {
         luaCall(self.state, nargs, nresults);
         return self.popTop(allocator);
     }
+
+    pub fn callDontPop(self: Self, nargs: c_int, nresults: c_int) void {
+        luaCall(self.state, nargs, nresults);
+    }
+
+    pub fn callGetRef(self: Self, nargs: c_int, nresults: c_int) !Ref {
+        self.callDontPop(nargs, nresults);
+        return self.makeRef();
+    }
     /// Pop top of the lua stack.
     ///
     /// Returns error if the stack is empty.
@@ -188,6 +197,10 @@ pub const LuaState = struct {
 
     pub fn pushRef(self: Self, ref: Ref) void {
         _ = lua.lua_rawgeti(self.state, lua.LUA_REGISTRYINDEX, ref.ref);
+    }
+
+    pub fn accessField(self: Self, idx: c_int, field: [:0]const u8) void {
+        lua.lua_getfield(self.state, idx, field);
     }
 
     fn assertStackNotEmpty(self: Self) LuaError!void {
