@@ -62,12 +62,14 @@ pub const Scene = struct {
     pub fn allocComponent(self: *Self, name: []const u8, comp: anytype) !void {
         const cptr = try self.scene_allocator.create(@TypeOf(comp));
         cptr.* = comp;
+        const compDeinit: ComponentDeinit = if (comptime std.meta.hasMethod(@TypeOf(comp), "deinit")) @ptrCast(&@TypeOf(comp).deinit) else @ptrCast(emptyDeinit);
+
         const wrapped: ComponentWrapper = .{
             .pointer = @ptrCast(cptr),
             .alignment = @alignOf(@TypeOf(comp)),
             .size = @sizeOf(@TypeOf(comp)),
             .name = name,
-            .deinit = @ptrCast(&@TypeOf(comp).deinit),
+            .deinit = compDeinit,
         };
         std.debug.print("align is {}\n", .{wrapped.alignment});
         try self.components.append(wrapped);
@@ -95,4 +97,13 @@ pub const Scene = struct {
     pub fn getAllocator(self: *Scene) std.mem.Allocator {
         return self.scene_allocator;
     }
+
+    // pub fn spawnEntity(self: *Scene, components: anytype) void {
+    //     inline for (components) |comp| {}
+    // }
 };
+
+fn emptyDeinit(ptr: *anyopaque, allocator: std.mem.Allocator) void {
+    _ = ptr;
+    _ = allocator;
+}
