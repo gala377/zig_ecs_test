@@ -15,12 +15,8 @@ pub fn installMainLogic(game: *Game) !void {
         system(close_on_button),
     });
 
-    const text: [:0]const u8 = "hello";
-    const title: [:0]u8 = try game.allocator.dupeZ(u8, text);
-
-    const close_text: [:0]const u8 = "Close";
-    const close_title: [:0]u8 = try game.allocator.allocSentinel(u8, close_text.len, 0);
-    @memcpy(close_title, close_text);
+    const title: [:0]u8 = try game.allocator.dupeZ(u8, "Click for log");
+    const close_title: [:0]u8 = try game.allocator.dupeZ(u8, "Close");
 
     _ = try game.newGlobalEntity(.{
         imgui.components.Button{
