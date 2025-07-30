@@ -6,8 +6,8 @@ const Game = ecs.Game;
 const GameActions = ecs.game.GameActions;
 const Query = ecs.Query;
 const system = ecs.system;
-
 const imgui = ecs.imgui;
+const Button = imgui.components.Button;
 
 pub fn installMainLogic(game: *Game) !void {
     try game.addSystems(.{
@@ -30,15 +30,21 @@ pub fn installMainLogic(game: *Game) !void {
         imgui.components.Button{
             .pos = .{ .x = 50.0, .y = 150.0 },
             .size = .{ .x = 200.0, .y = 100.0 },
+            .visible = false,
             .title = @ptrCast(close_title),
         },
         ButtonClose{},
     });
 }
 
-fn print_on_button(iter: *Query(.{ imgui.components.Button, ButtonLog })) void {
+fn print_on_button(
+    iter: *Query(.{ Button, ButtonLog }),
+    close_iter: *Query(.{ Button, ButtonClose }),
+) void {
     const button, _ = iter.single();
     if (button.clicked) {
+        const close_button, _ = close_iter.single();
+        close_button.visible = !close_button.visible;
         std.debug.print("The button has been clicked\n", .{});
     }
 }
