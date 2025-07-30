@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
 
     // Main library module with lua imports
     const lib_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib.zig"),
+        .root_source_file = b.path("lua/root.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -24,6 +24,24 @@ pub fn build(b: *std.Build) void {
     lib.step.dependOn(check_lua);
     b.installArtifact(lib);
 
+    const ecs_mod = b.createModule(.{
+        .root_source_file = b.path("ecs/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ecs_mod.addImport("lua_lib", lib_mod);
+
+    const ecs_lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "ecs",
+        .root_module = ecs_mod,
+    });
+    // build and link raylib
+    const raylib = buildRaylib(b, target, optimize);
+    raylib.linkToModule(ecs_lib);
+    // build lib
+    b.installArtifact(ecs_lib);
+
     // main executable module
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -31,15 +49,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe_mod.addImport("lua_lib", lib_mod);
+    exe_mod.addImport("ecs", ecs_mod);
     // executable for the executable module
     const exe = b.addExecutable(.{
         .name = "lua",
         .root_module = exe_mod,
     });
-    // build and link raylib
-    const raylib = buildRaylib(b, target, optimize);
-    raylib.linkToModule(exe);
-    b.installArtifact(exe);
 
     // lua build command
     const build_lua = buildLua(b);
