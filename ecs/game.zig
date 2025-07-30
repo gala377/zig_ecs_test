@@ -80,10 +80,10 @@ pub const Game = struct {
         }
     }
 
-    pub fn query(self: *Self, comptime components: anytype) QueryIter(components) {
+    pub fn query(self: *Self, comptime components: anytype) Query(components) {
         const global_components = self.global_entity_storage.query(components);
         const scene_components = if (self.currentScene) |*s| s.entity_storage.query(components) else null;
-        return QueryIter(components).init(global_components, scene_components);
+        return Query(components).init(global_components, scene_components);
     }
 
     pub fn addSystem(self: *Self, system: System) !void {
@@ -144,10 +144,12 @@ fn applyGameActions(game: *Game) void {
     }
 }
 
-pub fn QueryIter(comptime components: anytype) type {
+pub fn Query(comptime components: anytype) type {
     const InnerIter = EntityStorage.QueryIter(components);
     return struct {
         const ThisIter = @This();
+        pub const ComponentTypes = components;
+
         global_components: InnerIter,
         scene_components: ?InnerIter,
 
