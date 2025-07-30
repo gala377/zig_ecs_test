@@ -16,8 +16,7 @@ pub fn installMainLogic(game: *Game) !void {
     });
 
     const text: [:0]const u8 = "hello";
-    const title: [:0]u8 = try game.allocator.allocSentinel(u8, text.len, 0);
-    @memcpy(title, text);
+    const title: [:0]u8 = try game.allocator.dupeZ(u8, text);
 
     const close_text: [:0]const u8 = "Close";
     const close_title: [:0]u8 = try game.allocator.allocSentinel(u8, close_text.len, 0);
