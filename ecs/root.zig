@@ -18,3 +18,4 @@ pub const system = @import("system.zig").system;
 pub const utils = @import("utils.zig");
 
 pub const DeclarationGenerator = @import("declaration_generator.zig");
+pub const Resource = @import("resource.zig").Resource;

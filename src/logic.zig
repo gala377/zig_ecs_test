@@ -11,6 +11,7 @@ const imgui = ecs.imgui;
 const Button = imgui.components.Button;
 const Vec2 = ecs.utils.Vec2;
 const lua = @import("lua_lib");
+const Resource = ecs.Resource;
 
 pub fn installMainLogic(game: *Game) !void {
     try game.addSystems(.{
@@ -93,24 +94,23 @@ fn print_on_button(
 }
 
 fn close_on_button(
+    game_actions: Resource(GameActions),
     iter: *Query(.{ Button, ButtonClose }),
-    game_action_iter: *Query(.{GameActions}),
 ) void {
     const button, _ = iter.single();
-    var game_actions = game_action_iter.single()[0];
     if (button.clicked) {
-        game_actions.should_close = true;
+        game_actions.get().should_close = true;
     }
 }
 
 fn call_ref(
-    state: *Query(.{LuaRuntime}),
+    state: Resource(LuaRuntime),
     lua_button: *Query(.{ Button, ButtonLua }),
     close_button: *Query(.{ Button, ButtonClose }),
 ) void {
     const lua_btn: *Button, const lua_clb: *ButtonLua = lua_button.single();
     if (lua_btn.clicked) {
-        const lstate: *lua.State = state.single()[0].lua;
+        const lstate: *lua.State = state.get().lua;
         const cls_btn: *Button, _ = close_button.single();
 
         lstate.pushRef(lua_clb.callback);
