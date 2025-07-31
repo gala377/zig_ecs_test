@@ -3,9 +3,10 @@ const std = @import("std");
 const ComponentDeinit = @import("../scene.zig").ComponentDeinit;
 const Component = @import("../component.zig").LibComponent;
 const ExportLua = @import("../component.zig").ExportLua;
+const component_prefix = @import("build_options").components_prefix;
 
 pub const Button = struct {
-    pub usingnamespace Component("ecs", Button);
+    pub usingnamespace Component(component_prefix, Button);
     pub usingnamespace ExportLua(Button);
 
     pos: Vec2,

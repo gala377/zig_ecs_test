@@ -31,6 +31,10 @@ pub fn build(b: *std.Build) void {
     });
     ecs_mod.addImport("lua_lib", lib_mod);
 
+    const ecs_options = b.addOptions();
+    ecs_options.addOption([]const u8, "components_prefix", "ecs");
+    ecs_mod.addOptions("build_options", ecs_options);
+
     const ecs_lib = b.addLibrary(.{
         .linkage = .static,
         .name = "ecs",

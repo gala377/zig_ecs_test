@@ -2,8 +2,14 @@
 -- DO NOT EDIT
 ---@meta
 
+-- START NAMESPACES
+
 local ecs = {}
+ecs.imgui = {}
+ecs.imgui.components = {}
 ecs.game = {}
+
+-- END NAMESPACES
 
 ---@class ecs.game.GameActions
 ---@field should_close boolean

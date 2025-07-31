@@ -13,6 +13,8 @@ const EntityStorage = @import("entity_storage.zig");
 const PtrTuple = @import("utils.zig").PtrTuple;
 const Scene = @import("scene.zig").Scene;
 
+const component_prefix = @import("build_options").components_prefix;
+
 pub const Size = struct {
     width: i32,
     height: i32,
@@ -146,13 +148,13 @@ pub const Game = struct {
 };
 
 pub const GameActions = struct {
-    pub usingnamespace Component("ecs", GameActions);
+    pub usingnamespace Component(component_prefix, GameActions);
     pub usingnamespace ExportLua(GameActions);
     should_close: bool,
 };
 
 pub const LuaRuntime = struct {
-    pub usingnamespace Component("ecs", LuaRuntime);
+    pub usingnamespace Component(component_prefix, LuaRuntime);
     lua: *lua.State,
 };
 

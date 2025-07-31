@@ -122,6 +122,16 @@ pub fn ExportLua(comptime T: type) type {
         }
 
         pub fn luaGenerateStubFile(writer: std.io.AnyWriter) !void {
+            // var name_iter = std.mem.splitScalar(u8, T.comp_name, '.');
+            // var emit_local = false;
+            // var type_name: []const u8 = undefined;
+            // var loop_index: usize = 0;
+            // while (name_iter.next()) |part| {
+            //     emit_local = loop_index == 0;
+            //     type_name = part;
+            //     loop_index += 1;
+            // }
+
             try writer.print("---@class {s}\n", .{T.comp_name});
             const fields = std.meta.fields(T);
             inline for (fields) |f| {
@@ -136,7 +146,11 @@ pub fn ExportLua(comptime T: type) type {
                     else => {},
                 }
             }
-            try writer.print("local {s} = {{}}\n\n", .{T.comp_name});
+            const emit_local = std.mem.indexOfScalar(u8, T.comp_name, '.') == null;
+            if (emit_local) {
+                try writer.writeAll("local ");
+            }
+            try writer.print("{s} = {{}}\n\n", .{T.comp_name});
         }
     };
 }
