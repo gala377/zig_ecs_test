@@ -16,3 +16,5 @@ pub const EntityId = scene.EntityId;
 pub const system = @import("system.zig").system;
 
 pub const utils = @import("utils.zig");
+
+pub const DeclarationGenerator = @import("declaration_generator.zig");

@@ -45,6 +45,7 @@ fn runGame(allocator: std.mem.Allocator) !void {
 
     try ecs.game.addDefaultPlugins(&game);
     try imgui.addImguiPlugin(&game);
+    try imgui.exportLua(&game);
     try logic.installMainLogic(&game);
 
     const scene = try Scene.init(game.newId(), allocator);

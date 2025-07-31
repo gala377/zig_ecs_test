@@ -1,10 +1,12 @@
 const Vec2 = @import("../utils.zig").Vec2;
 const std = @import("std");
 const ComponentDeinit = @import("../scene.zig").ComponentDeinit;
-const Component = @import("../component.zig").Component;
+const Component = @import("../component.zig").LibComponent;
+const ExportLua = @import("../component.zig").ExportLua;
 
 pub const Button = struct {
-    pub usingnamespace Component(Button);
+    pub usingnamespace Component("ecs", Button);
+    pub usingnamespace ExportLua(Button);
 
     pos: Vec2,
     size: Vec2,

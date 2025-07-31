@@ -5,7 +5,9 @@ const rg = @import("raygui");
 const rl = @import("raylib");
 
 const commands = @import("commands.zig");
-const Component = @import("component.zig").Component;
+const Component = @import("component.zig").LibComponent;
+const ExportLua = @import("component.zig").ExportLua;
+const DeclarationGenerator = @import("declaration_generator.zig");
 const EntityId = @import("scene.zig").EntityId;
 const EntityStorage = @import("entity_storage.zig");
 const PtrTuple = @import("utils.zig").PtrTuple;
@@ -19,11 +21,17 @@ pub const Size = struct {
 pub const WindowOptions = struct {
     title: [:0]const u8,
     size: Size,
-    targetFps: i32,
+    targetFps: i32 = 60,
+};
+
+pub const BuildOptions = struct {
+    generate_lua_stub_files: bool = false,
+    lua_stub_files_output: ?[]const u8 = null,
 };
 
 pub const Options = struct {
     window: WindowOptions,
+    build_options: BuildOptions = .{},
 };
 
 pub const Sentinel = usize;
@@ -80,6 +88,10 @@ pub const Game = struct {
         }
     }
 
+    pub fn exportComponent(self: *Self, comptime Comp: type) void {
+        Comp.registerMetaTable(self.luaState);
+    }
+
     pub fn query(self: *Self, comptime components: anytype) Query(components) {
         const global_components = self.global_entity_storage.query(components);
         const scene_components = if (self.currentScene) |*s| s.entity_storage.query(components) else null;
@@ -111,12 +123,14 @@ pub const Game = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.luaState.deinit();
+        self.systems.deinit();
         if (self.currentScene) |*scene| {
             scene.deinit();
         }
-        self.systems.deinit();
         self.global_entity_storage.deinit();
+        // INFO: components may hold references to lua so we need to
+        // dealloc it last
+        self.luaState.deinit();
     }
 
     pub fn newId(self: *Self) usize {
@@ -124,16 +138,32 @@ pub const Game = struct {
         self.inner_id += 1;
         return old;
     }
+
+    pub fn luaLoad(self: *Self, source: []const u8) !lua.Ref {
+        try self.luaState.load(source);
+        return self.luaState.makeRef();
+    }
 };
 
 pub const GameActions = struct {
-    pub usingnamespace Component(GameActions);
+    pub usingnamespace Component("ecs", GameActions);
+    pub usingnamespace ExportLua(GameActions);
     should_close: bool,
+};
+
+pub const LuaRuntime = struct {
+    pub usingnamespace Component("ecs", LuaRuntime);
+    lua: *lua.State,
 };
 
 pub fn addDefaultPlugins(game: *Game) !void {
     _ = try game.newGlobalEntity(.{GameActions{ .should_close = false }});
+    _ = try game.newGlobalEntity(.{LuaRuntime{ .lua = &game.luaState }});
     try game.addSystem(&applyGameActions);
+}
+
+pub fn registerDefaultComponentsForBuild(generator: *DeclarationGenerator) !void {
+    try generator.registerComponentForBuild(GameActions);
 }
 
 fn applyGameActions(game: *Game) void {

@@ -66,6 +66,23 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
+    // generate lua stub files
+    const generate_d_files = b.createModule(.{
+        .root_source_file = b.path("src/game_build.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    generate_d_files.addImport("lua_lib", lib_mod);
+    generate_d_files.addImport("ecs", ecs_mod);
+    // executable for the executable module
+    const generate_d_file_exe = b.addExecutable(.{
+        .name = "lua_generate",
+        .root_module = generate_d_files,
+    });
+    // make commmand for generating stubs
+    const run_generate_cmd = b.addRunArtifact(generate_d_file_exe);
+    run_generate_cmd.step.dependOn(b.getInstallStep());
+
     // build unit tests for the test library
     const lib_unit_tests = b.addTest(.{
         .root_module = lib_mod,
@@ -95,6 +112,9 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    const generate_step = b.step("generate", "Generate lua declaration files");
+    generate_step.dependOn(&run_generate_cmd.step);
 }
 
 fn checkForLuaFiles(b: *std.Build) *Step {
