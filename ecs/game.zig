@@ -12,6 +12,8 @@ const EntityId = @import("scene.zig").EntityId;
 const EntityStorage = @import("entity_storage.zig");
 const PtrTuple = @import("utils.zig").PtrTuple;
 const Scene = @import("scene.zig").Scene;
+const Resource = @import("resource.zig").Resource;
+const make_system = @import("system.zig").system;
 
 const component_prefix = @import("build_options").components_prefix;
 
@@ -48,11 +50,11 @@ pub const Game = struct {
 
     // private
     allocator: std.mem.Allocator,
-    luaState: lua.State,
+    lua_state: lua.State,
 
     // internal state
-    shouldClose: bool,
-    currentScene: ?Scene,
+    should_close: bool,
+    current_scene: ?Scene,
 
     inner_id: usize,
     systems: std.ArrayList(System),
@@ -62,12 +64,12 @@ pub const Game = struct {
         const state = try lua.State.init(allocator);
         return .{
             .allocator = allocator,
-            .luaState = state,
-            .shouldClose = false,
+            .lua_state = state,
+            .should_close = false,
             .options = options,
             .inner_id = 1,
             .systems = .init(allocator),
-            .currentScene = null,
+            .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator),
         };
     }
@@ -78,7 +80,7 @@ pub const Game = struct {
         rl.initWindow(self.options.window.size.width, self.options.window.size.height, self.options.window.title);
         defer rl.closeWindow();
 
-        while (!self.shouldClose) : (self.shouldClose = rl.windowShouldClose() or self.shouldClose) {
+        while (!self.should_close) : (self.should_close = rl.windowShouldClose() or self.should_close) {
             rl.beginDrawing();
 
             for (self.systems.items) |sys| {
@@ -91,13 +93,22 @@ pub const Game = struct {
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
-        Comp.registerMetaTable(self.luaState);
+        Comp.registerMetaTable(self.lua_state);
     }
 
     pub fn query(self: *Self, comptime components: anytype) Query(components) {
         const global_components = self.global_entity_storage.query(components);
-        const scene_components = if (self.currentScene) |*s| s.entity_storage.query(components) else null;
+        const scene_components = if (self.current_scene) |*s| s.entity_storage.query(components) else null;
         return Query(components).init(global_components, scene_components);
+    }
+
+    pub fn getResource(self: *Self, comptime T: type) Resource(T) {
+        var q = self.query(.{T});
+        return .init(q.single()[0]);
+    }
+
+    pub fn addResource(self: *Self, resource: anytype) !void {
+        _ = try self.newGlobalEntity(.{resource});
     }
 
     pub fn addSystem(self: *Self, system: System) !void {
@@ -117,22 +128,22 @@ pub const Game = struct {
     }
 
     pub fn setInitialScene(self: *Self, scene: Scene) !void {
-        if (self.currentScene != null) {
+        if (self.current_scene != null) {
             return error.sceneAlreadySet;
         }
-        self.currentScene = scene;
-        self.currentScene.?.id = self.newId();
+        self.current_scene = scene;
+        self.current_scene.?.id = self.newId();
     }
 
     pub fn deinit(self: *Self) void {
         self.systems.deinit();
-        if (self.currentScene) |*scene| {
+        if (self.current_scene) |*scene| {
             scene.deinit();
         }
         self.global_entity_storage.deinit();
         // INFO: components may hold references to lua so we need to
         // dealloc it last
-        self.luaState.deinit();
+        self.lua_state.deinit();
     }
 
     pub fn newId(self: *Self) usize {
@@ -142,8 +153,8 @@ pub const Game = struct {
     }
 
     pub fn luaLoad(self: *Self, source: []const u8) !lua.Ref {
-        try self.luaState.load(source);
-        return self.luaState.makeRef();
+        try self.lua_state.load(source);
+        return self.lua_state.makeRef();
     }
 };
 
@@ -159,8 +170,8 @@ pub const LuaRuntime = struct {
 };
 
 pub fn addDefaultPlugins(game: *Game) !void {
-    _ = try game.newGlobalEntity(.{GameActions{ .should_close = false }});
-    _ = try game.newGlobalEntity(.{LuaRuntime{ .lua = &game.luaState }});
+    _ = try game.addResource(GameActions{ .should_close = false });
+    _ = try game.addResource(LuaRuntime{ .lua = &game.lua_state });
     try game.addSystem(&applyGameActions);
 }
 
@@ -169,10 +180,9 @@ pub fn registerDefaultComponentsForBuild(generator: *DeclarationGenerator) !void
 }
 
 fn applyGameActions(game: *Game) void {
-    var iter = game.query(.{GameActions});
-    const actions: *GameActions = iter.single().@"0";
-    if (actions.should_close) {
-        game.shouldClose = true;
+    var actions = game.getResource(GameActions);
+    if (actions.get().should_close) {
+        game.should_close = true;
     }
 }
 

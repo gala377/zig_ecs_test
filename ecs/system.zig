@@ -15,13 +15,18 @@ pub fn system(comptime F: anytype) System {
             var queries: std.meta.ArgsTuple(@TypeOf(F)) = undefined;
             inline for (params, 0..) |p, index| {
                 const para_t = p.type.?;
-                if (@typeInfo(para_t) != .pointer) {
-                    @compileError("Queries have to be accepted by pointer");
+                if (@typeInfo(para_t) == .@"struct" and @hasDecl(para_t, "is_resource_marker")) {
+                    var query = game.query(.{para_t.component_t});
+                    queries[index] = .init(query.single()[0]);
+                } else {
+                    if (@typeInfo(para_t) != .pointer) {
+                        @compileError("Queries have to be accepted by pointer");
+                    }
+                    const unpack_pointer = @typeInfo(para_t).pointer.child;
+                    const component_types = unpack_pointer.ComponentTypes;
+                    var query = game.query(component_types);
+                    queries[index] = &query;
                 }
-                const unpack_pointer = @typeInfo(para_t).pointer.child;
-                const component_types = unpack_pointer.ComponentTypes;
-                var query = game.query(component_types);
-                queries[index] = &query;
             }
             // Call original function, expanding queries as arguments
             return @call(.auto, F, queries);
