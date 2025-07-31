@@ -112,9 +112,10 @@ pub fn generate(self: *Self) anyerror!void {
     const writer = file.writer();
     try emitHeader(writer);
     try self.emitNamespaces(writer);
+    try writer.writeAll("-- START TYPES\n\n");
     for (self.generators.items) |func| {
         try func(writer.any());
     }
-
+    try writer.writeAll("\n-- END TYPES\n\n");
     try writer.writeAll("\n---@diagnostic enable: unused-local");
 }

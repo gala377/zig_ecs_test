@@ -13,6 +13,8 @@ ecs.game = {}
 
 -- END NAMESPACES
 
+-- START TYPES
+
 ---@class ecs.game.GameActions
 ---@field should_close boolean
 ecs.game.GameActions = {}
@@ -23,7 +25,11 @@ ecs.game.GameActions = {}
 ecs.imgui.components.Button = {}
 
 ---@class game_build.TestComponent
+---@field test_field boolean
 game_build.TestComponent = {}
+
+
+-- END TYPES
 
 
 ---@diagnostic enable: unused-local

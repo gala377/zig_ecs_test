@@ -26,6 +26,8 @@ pub fn main() !void {
 const TestComponent = struct {
     pub usingnamespace Component(TestComponent);
     pub usingnamespace ExportLua(TestComponent);
+
+    test_field: bool,
 };
 
 fn generate(allocator: std.mem.Allocator) !void {
