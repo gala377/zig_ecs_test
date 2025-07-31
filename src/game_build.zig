@@ -2,6 +2,8 @@ const std = @import("std");
 const ecs = @import("ecs");
 const DecalartionGenerator = @import("ecs").DeclarationGenerator;
 const imgui = @import("ecs").imgui;
+const Component = @import("ecs").Component;
+const ExportLua = @import("ecs").component.ExportLua;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{
@@ -21,12 +23,18 @@ pub fn main() !void {
     try generate(gpa.allocator());
 }
 
+const TestComponent = struct {
+    pub usingnamespace Component(TestComponent);
+    pub usingnamespace ExportLua(TestComponent);
+};
+
 fn generate(allocator: std.mem.Allocator) !void {
     var generator = DecalartionGenerator.init("scripts/types/generated.d.lua", allocator);
     defer generator.deinit();
 
     try ecs.game.registerDefaultComponentsForBuild(&generator);
     try imgui.exportBuild(&generator);
+    try generator.registerComponentForBuild(TestComponent);
 
     try generator.generate();
 }
