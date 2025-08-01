@@ -46,33 +46,21 @@ pub const LuaState = struct {
 
         /// Called from lua to allocate, reallocate and free memory.
         pub fn alloc(self: *Context, ptr: ?*anyopaque, osize: usize, nsize: usize) callconv(.C) ?*anyopaque {
-            if (ptr == null and nsize != 0) {
-                const casted: ?*anyopaque = @ptrCast(self.allocator.rawAlloc(nsize, std.mem.Alignment.@"8", 0));
-                return casted orelse {
+            if (ptr == null) {
+                const allocated: []align(8) u8 = self.allocator.alignedAlloc(u8, 8, nsize) catch {
                     return null;
                 };
+                return @as(?*anyopaque, @ptrCast(allocated.ptr));
             }
-            if (ptr != null and nsize == 0) {
-                const mem: [*]u8 = @ptrCast(ptr);
-                const asSlice: []u8 = mem[0..osize];
-                self.allocator.rawFree(asSlice, std.mem.Alignment.@"8", 0);
+            const mem: [*]align(8) u8 = @alignCast(@ptrCast(ptr));
+            const asSlice: []align(8) u8 = mem[0..osize];
+            const ret: []align(8) u8 = self.allocator.realloc(asSlice, nsize) catch {
+                return null;
+            };
+            if (ret.len == 0) {
                 return null;
             }
-            if (ptr != null and nsize != 0) {
-                const mem: [*]u8 = @ptrCast(ptr);
-                const asSlice: []u8 = mem[0..osize];
-                const actual = self.allocator.rawRemap(asSlice, std.mem.Alignment.@"8", nsize, 0) orelse brk: {
-                    const new = self.allocator.rawAlloc(nsize, std.mem.Alignment.@"8", 0) orelse break :brk null;
-                    @memcpy(new, asSlice);
-                    self.allocator.rawFree(asSlice, std.mem.Alignment.@"8", 0);
-                    break :brk new;
-                };
-                const casted: ?*anyopaque = @ptrCast(actual);
-                return casted orelse {
-                    return null;
-                };
-            }
-            return null;
+            return @as(?*anyopaque, @ptrCast(ret.ptr));
         }
     };
 
