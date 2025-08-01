@@ -110,3 +110,9 @@ pub fn isSubset(set: Sorted([]const ComponentId), of: Sorted([]const ComponentId
     }
     return set_idx == set.len;
 }
+
+pub fn ZigPointer(comptime T: type) type {
+    return struct {
+        ptr: *T,
+    };
+}

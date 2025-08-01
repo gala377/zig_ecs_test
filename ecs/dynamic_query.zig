@@ -1,8 +1,11 @@
 const Storage = @import("entity_storage.zig");
 const ComponentId = @import("component.zig").ComponentId;
+const LuaPush = @import("entity_storage.zig").ComponentLuaPush;
 const std = @import("std");
 const Entity = @import("entity.zig");
 const utils = @import("utils.zig");
+const lua = @import("lua_lib");
+const clua = lua.clib;
 
 // Because dunamic query cannot decide the amount of components at comptime
 // the returned components are returned as a slice allocated by the iterator.
@@ -73,7 +76,7 @@ pub const DynamicQueryIter = struct {
     current_entity_iterator: ?std.AutoHashMap(usize, Entity).ValueIterator = null,
     allocator: std.mem.Allocator,
 
-    pub fn next(self: *Self) ?[]*anyopaque {
+    pub fn next(self: *Self) ?[]LuaAccessibleOpaqueComponent {
         if (self.current_entity_iterator) |it| {
             var itt: std.AutoHashMap(usize, Entity).ValueIterator = it;
             if (itt.next()) |entity| {
@@ -107,14 +110,83 @@ pub const DynamicQueryIter = struct {
         return null;
     }
 
-    fn getComponentsFromEntity(self: *Self, entity: *Entity) []*anyopaque {
-        var res = self.allocator.alloc(*anyopaque, self.component_ids.len) catch {
+    fn getComponentsFromEntity(self: *Self, entity: *Entity) []LuaAccessibleOpaqueComponent {
+        var res = self.allocator.alloc(LuaAccessibleOpaqueComponent, self.component_ids.len) catch {
             @panic("oom");
         };
         for (self.component_ids, 0..) |id, idx| {
             const comp = entity.components.getPtr(id).?;
-            res[idx] = comp.pointer;
+            const wrapped = LuaAccessibleOpaqueComponent{
+                .pointer = comp.pointer,
+                .push = comp.luaPush.?,
+            };
+            res[idx] = wrapped;
         }
         return res;
     }
+
+    pub fn luaPush(self: *Self, state: *clua.lua_State) void {
+        std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
+        const udata: *utils.ZigPointer(Self) = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(Self))) orelse @panic("lua could not allocate memory");
+        udata.* = utils.ZigPointer(Self){ .ptr = self };
+        if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
+            @panic("Metatable " ++ MetaTableName ++ "not found");
+        }
+        // Assign the metatable to the userdata (stack: userdata, metatable)
+        if (clua.lua_setmetatable(state, -2) != 0) {
+            // @panic("object " ++ @typeName(T) ++ " already had a metatable");
+        }
+    }
+
+    pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
+        std.debug.print("calling next in zig\n", .{});
+        const ptr: *utils.ZigPointer(Self) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
+        const self = ptr.ptr;
+        const rest = self.next();
+        if (rest == null) {
+            clua.lua_pushnil(state);
+            return 1;
+        }
+        // get component pointers
+        const components = rest.?;
+
+        // create a table on the stack for components
+        clua.lua_createtable(state, components.len, 0);
+
+        for (components, 1..) |component, idx| {
+            component.push(component.pointer, state);
+            clua.lua_seti(state, -2, idx);
+        }
+
+        self.allocator.free(components);
+        return 1;
+    }
+
+    pub fn registerMetaTable(lstate: lua.State) !void {
+        const state = lstate.state;
+        if (clua.luaL_newmetatable(state, MetaTableName) != 1) {
+            @panic("Could not create metatable");
+        }
+        clua.lua_pushvalue(state, -1);
+        clua.lua_setfield(state, -2, "__index");
+        const methods = [_]clua.luaL_Reg{
+            .{
+                .name = "next",
+                .func = @ptrCast(luaNext),
+            },
+            .{
+                .name = null,
+                .func = null,
+            },
+        };
+
+        clua.luaL_setfuncs(state, &methods[0], 0);
+        // Pop metatable
+        clua.lua_pop(state, 1);
+    }
+};
+
+const LuaAccessibleOpaqueComponent = struct {
+    pointer: *anyopaque,
+    push: LuaPush,
 };

@@ -6,9 +6,11 @@ const PtrTuple = @import("utils.zig").PtrTuple;
 const assertSorted = @import("utils.zig").assertSorted;
 const utils = @import("utils");
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
+const clua = @import("lua_lib").clib;
 
 pub const ComponentDeinit = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentFree = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
+pub const ComponentLuaPush = *const fn (*anyopaque, state: *clua.lua_State) void;
 
 pub const ComponentWrapper = struct {
     pointer: *anyopaque,
@@ -19,6 +21,7 @@ pub const ComponentWrapper = struct {
     component_id: ComponentId,
     deinit: ComponentDeinit,
     free: ComponentFree,
+    luaPush: ?ComponentLuaPush,
 };
 
 pub const ArchetypeStorage = struct {
@@ -239,6 +242,10 @@ fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
     else
         @ptrCast(&emptyDeinit);
 
+    const compLuaPush: ?ComponentLuaPush = if (comptime std.meta.hasFn(Component, "luaPush"))
+        @ptrCast(&Component.luaPush)
+    else
+        null;
     const wrapped: ComponentWrapper = .{
         .pointer = @ptrCast(cptr),
         .alignment = @alignOf(Component),
@@ -247,6 +254,7 @@ fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
         .name = Component.comp_name,
         .deinit = compDeinit,
         .free = componentFree(Component),
+        .luaPush = compLuaPush,
     };
     return wrapped;
 }

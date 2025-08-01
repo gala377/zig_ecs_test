@@ -1,6 +1,7 @@
 const lua = @import("lua_lib");
 const clua = lua.clib;
 const std = @import("std");
+const utils = @import("utils.zig");
 
 fn simpleHashString(comptime str: []const u8) u64 {
     var hash: u64 = 5381;
@@ -34,7 +35,9 @@ pub fn ExportLua(comptime T: type) type {
         const MetaTableName = T.comp_name ++ "_MetaTable";
 
         pub fn luaPush(self: *T, state: *clua.lua_State) void {
-            clua.lua_pushlightuserdata(state, self);
+            std.debug.print("Pushing value of t={s}\n", .{@typeName(T)});
+            const udata: *utils.ZigPointer(T) = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(T))) orelse @panic("lua could not allocate memory");
+            udata.* = utils.ZigPointer(T){ .ptr = self };
             if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
                 @panic("Metatable " ++ MetaTableName ++ "not found");
             }
@@ -49,7 +52,8 @@ pub fn ExportLua(comptime T: type) type {
                 @compileError("component has to be a struct");
             }
             const fields = std.meta.fields(T);
-            const ptr: *T = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
+            const udata: *utils.ZigPointer(T) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
+            const ptr: *T = @alignCast(@ptrCast(udata.ptr));
             const luaField = clua.lua_tolstring(state, 2, null);
             inline for (fields) |f| {
                 const asSlice = std.mem.sliceTo(luaField, 0);
@@ -79,7 +83,8 @@ pub fn ExportLua(comptime T: type) type {
                 @compileError("component has to be a struct");
             }
             const fields = std.meta.fields(T);
-            const ptr: *T = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
+            const udata: *utils.ZigPointer(T) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
+            const ptr: *T = @alignCast(@ptrCast(udata.ptr));
             const luaField = clua.lua_tolstring(state, 2, null);
             inline for (fields) |f| {
                 const asSlice = std.mem.sliceTo(luaField, 0);
