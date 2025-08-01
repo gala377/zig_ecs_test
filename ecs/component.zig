@@ -31,7 +31,7 @@ pub fn LibComponent(comptime name_prefix: []const u8, comptime T: type) type {
 
 pub fn ExportLua(comptime T: type) type {
     return struct {
-        const MetaTableName = T.comp_name ++ "_MataTable";
+        const MetaTableName = T.comp_name ++ "_MetaTable";
 
         pub fn luaPush(self: *T, state: *clua.lua_State) void {
             clua.lua_pushlightuserdata(state, self);
@@ -122,16 +122,6 @@ pub fn ExportLua(comptime T: type) type {
         }
 
         pub fn luaGenerateStubFile(writer: std.io.AnyWriter) !void {
-            // var name_iter = std.mem.splitScalar(u8, T.comp_name, '.');
-            // var emit_local = false;
-            // var type_name: []const u8 = undefined;
-            // var loop_index: usize = 0;
-            // while (name_iter.next()) |part| {
-            //     emit_local = loop_index == 0;
-            //     type_name = part;
-            //     loop_index += 1;
-            // }
-
             try writer.print("---@class {s}\n", .{T.comp_name});
             const fields = std.meta.fields(T);
             inline for (fields) |f| {
@@ -146,11 +136,19 @@ pub fn ExportLua(comptime T: type) type {
                     else => {},
                 }
             }
+            try writer.writeAll("---@field private component_hash integer\n");
+            try writer.writeAll("---@field private metatable_name string\n");
             const emit_local = std.mem.indexOfScalar(u8, T.comp_name, '.') == null;
             if (emit_local) {
                 try writer.writeAll("local ");
             }
-            try writer.print("{s} = {{}}\n\n", .{T.comp_name});
+            try writer.print(
+                \\{s} = {{
+                \\  component_hash = {},
+                \\  metatable_name = "{s}",
+                \\}}
+            , .{ T.comp_name, T.comp_id, MetaTableName });
+            try writer.writeAll("\n");
         }
     };
 }
