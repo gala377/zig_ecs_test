@@ -14,6 +14,7 @@ const PtrTuple = @import("utils.zig").PtrTuple;
 const Scene = @import("scene.zig").Scene;
 const Resource = @import("resource.zig").Resource;
 const make_system = @import("system.zig").system;
+const DynamicQueryIter = @import("dynamic_query.zig").DynamicQueryIter;
 
 const component_prefix = @import("build_options").components_prefix;
 
@@ -169,10 +170,14 @@ pub const LuaRuntime = struct {
     lua: *lua.State,
 };
 
-pub fn addDefaultPlugins(game: *Game) !void {
+pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
     _ = try game.addResource(GameActions{ .should_close = false });
     _ = try game.addResource(LuaRuntime{ .lua = &game.lua_state });
     try game.addSystem(&applyGameActions);
+    if (export_lua) {
+        game.exportComponent(GameActions);
+        try DynamicQueryIter.registerMetaTable(game.lua_state);
+    }
 }
 
 pub fn registerDefaultComponentsForBuild(generator: *DeclarationGenerator) !void {

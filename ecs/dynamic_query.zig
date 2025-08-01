@@ -87,7 +87,7 @@ pub const DynamicQueryIter = struct {
         }
         while (self.next_archetype < self.storage.archetypes.items.len) {
             const comps = self.storage.components_per_archetype.items[self.next_archetype];
-            if (!utils.isSubset(&self.sorted_component_ids, comps)) {
+            if (!utils.isSubset(self.sorted_component_ids, comps)) {
                 // not a subset, check next archetype
                 self.next_archetype += 1;
                 continue;
@@ -151,11 +151,11 @@ pub const DynamicQueryIter = struct {
         const components = rest.?;
 
         // create a table on the stack for components
-        clua.lua_createtable(state, components.len, 0);
+        clua.lua_createtable(state, @intCast(components.len), 0);
 
         for (components, 1..) |component, idx| {
             component.push(component.pointer, state);
-            clua.lua_seti(state, -2, idx);
+            clua.lua_seti(state, -2, @intCast(idx));
         }
 
         self.allocator.free(components);
@@ -172,7 +172,7 @@ pub const DynamicQueryIter = struct {
         const methods = [_]clua.luaL_Reg{
             .{
                 .name = "next",
-                .func = @ptrCast(luaNext),
+                .func = @ptrCast(&luaNext),
             },
             .{
                 .name = null,

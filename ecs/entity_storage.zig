@@ -4,7 +4,7 @@ const ComponentId = @import("component.zig").ComponentId;
 const Sorted = @import("utils.zig").Sorted;
 const PtrTuple = @import("utils.zig").PtrTuple;
 const assertSorted = @import("utils.zig").assertSorted;
-const utils = @import("utils");
+const utils = @import("utils.zig");
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 const clua = @import("lua_lib").clib;
 
