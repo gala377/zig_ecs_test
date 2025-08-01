@@ -4,6 +4,8 @@ const ComponentId = @import("component.zig").ComponentId;
 const Sorted = @import("utils.zig").Sorted;
 const PtrTuple = @import("utils.zig").PtrTuple;
 const assertSorted = @import("utils.zig").assertSorted;
+const utils = @import("utils");
+const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 
 pub const ComponentDeinit = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentFree = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
@@ -122,7 +124,7 @@ pub fn QueryIter(comptime Components: anytype) type {
             }
             while (self.next_archetype < self.storage.archetypes.items.len) {
                 const comps = self.storage.components_per_archetype.items[self.next_archetype];
-                if (!isSubset(&self.component_ids, comps)) {
+                if (!utils.isSubset(&self.component_ids, comps)) {
                     // not a subset, check next archetype
                     self.next_archetype += 1;
                     continue;
@@ -158,31 +160,6 @@ pub fn QueryIter(comptime Components: anytype) type {
     };
 }
 
-fn isSubset(set: Sorted([]const ComponentId), of: Sorted([]const ComponentId)) bool {
-    if (set.len > of.len) {
-        return false;
-    }
-    var set_idx: usize = 0;
-    var of_idx: usize = 0;
-    while (set_idx < set.len and of_idx < of.len) {
-        const set_id = set[set_idx];
-        const of_id = of[of_idx];
-        if (set_id == of_id) {
-            set_idx += 1;
-            of_idx += 1;
-        } else if (set_id > of_id) {
-            of_idx += 1;
-        } else if (set_id < of_id) {
-            // component is higher, meaing we did not find a match
-            // for the given id - so this is not the archetype
-            return false;
-        } else {
-            unreachable;
-        }
-    }
-    return set_idx == set.len;
-}
-
 pub fn query(self: *Self, comptime comps: anytype) QueryIter(comps) {
     const info = @typeInfo(@TypeOf(comps));
     if (info != .@"struct" and !info.@"struct".is_tuple) {
@@ -200,6 +177,19 @@ pub fn query(self: *Self, comptime comps: anytype) QueryIter(comps) {
     std.sort.heap(ComponentId, &componentIds, {}, std.sort.asc(ComponentId));
     _ = assertSorted(ComponentId, &componentIds);
     return QueryIter(comps).init(self, componentIds);
+}
+
+pub const DynamicScopeOptions = struct {
+    allocator: ?std.mem.Allocator = null,
+};
+
+/// Returns a scope object that can be used to crete dynamic query iterator.
+/// Scope has to be freed after the query has been used.
+///
+/// Does not take ownership of the components slice. It has be the freed by the caller.
+pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, options: DynamicScopeOptions) !DynamicQueryScope {
+    const allocator = if (options.allocator) |a| a else self.allocator;
+    return .init(self, components, allocator);
 }
 
 fn findSubsetArchetypeProvidedSorted(self: *Self, ids: Sorted([]ComponentId)) ?*ArchetypeStorage {

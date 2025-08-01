@@ -1,4 +1,5 @@
 const std = @import("std");
+const ComponentId = @import("component.zig").ComponentId;
 
 pub const Vec2 = struct {
     x: f32,
@@ -83,4 +84,29 @@ pub fn PtrTuple(comptime Types: anytype) type {
             .decls = &.{},
         },
     });
+}
+
+pub fn isSubset(set: Sorted([]const ComponentId), of: Sorted([]const ComponentId)) bool {
+    if (set.len > of.len) {
+        return false;
+    }
+    var set_idx: usize = 0;
+    var of_idx: usize = 0;
+    while (set_idx < set.len and of_idx < of.len) {
+        const set_id = set[set_idx];
+        const of_id = of[of_idx];
+        if (set_id == of_id) {
+            set_idx += 1;
+            of_idx += 1;
+        } else if (set_id > of_id) {
+            of_idx += 1;
+        } else if (set_id < of_id) {
+            // component is higher, meaing we did not find a match
+            // for the given id - so this is not the archetype
+            return false;
+        } else {
+            unreachable;
+        }
+    }
+    return set_idx == set.len;
 }

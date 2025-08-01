@@ -19,34 +19,23 @@ ecs.game = {}
 ---@field should_close boolean
 ---@field private component_hash integer
 ---@field private metatable_name string
-ecs.game.GameActions = {
-	component_hash = 11651504605562944385,
-	metatable_name = "ecs.game.GameActions_MetaTable",
-}
+ecs.game.GameActions = {}
+
 ---@class ecs.imgui.components.Button
 ---@field visible boolean
 ---@field clicked boolean
 ---@field private component_hash integer
 ---@field private metatable_name string
-ecs.imgui.components.Button = {
-	component_hash = 12803121869393224583,
-	metatable_name = "ecs.imgui.components.Button_MetaTable",
-}
+ecs.imgui.components.Button = {}
+
 ---@class game_build.TestComponent
 ---@field test_field boolean
 ---@field private component_hash integer
 ---@field private metatable_name string
-game_build.TestComponent = {
-	component_hash = 15830503684399464143,
-	metatable_name = "game_build.TestComponent_MetaTable",
-}
+game_build.TestComponent = {}
+
 
 -- END TYPES
 
+
 ---@diagnostic enable: unused-local
-
-return {
-	game_build = game_build,
-	ecs = ecs,
-}
-

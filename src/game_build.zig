@@ -31,7 +31,7 @@ const TestComponent = struct {
 };
 
 fn generate(allocator: std.mem.Allocator) !void {
-    var generator = DecalartionGenerator.init("scripts/types/generated.d.lua", allocator);
+    var generator = DecalartionGenerator.init("scripts/types/generated.d.lua", "scripts/lib/components.lua", allocator);
     defer generator.deinit();
 
     try ecs.game.registerDefaultComponentsForBuild(&generator);

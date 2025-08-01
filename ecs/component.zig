@@ -142,6 +142,15 @@ pub fn ExportLua(comptime T: type) type {
             if (emit_local) {
                 try writer.writeAll("local ");
             }
+            try writer.print("{s} = {{}}\n\n", .{T.comp_name});
+        }
+
+        pub fn luaGenerateDataDefinition(writer: std.io.AnyWriter) !void {
+            try writer.print("---@type {s}\n", .{T.comp_name});
+            const emit_local = std.mem.indexOfScalar(u8, T.comp_name, '.') == null;
+            if (emit_local) {
+                try writer.writeAll("local ");
+            }
             try writer.print(
                 \\{s} = {{
                 \\  component_hash = {},
