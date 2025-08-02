@@ -17,25 +17,24 @@ ecs.game = {}
 
 ---@class ecs.game.GameActions
 ---@field should_close boolean
----@field private component_hash integer
+---@field private component_hash string
 ---@field private metatable_name string
 ecs.game.GameActions = {}
 
 ---@class ecs.imgui.components.Button
 ---@field visible boolean
 ---@field clicked boolean
----@field private component_hash integer
+---@field private component_hash string
 ---@field private metatable_name string
 ecs.imgui.components.Button = {}
 
 ---@class game_build.TestComponent
 ---@field test_field boolean
----@field private component_hash integer
+---@field private component_hash string
 ---@field private metatable_name string
 game_build.TestComponent = {}
 
-
 -- END TYPES
 
-
 ---@diagnostic enable: unused-local
+

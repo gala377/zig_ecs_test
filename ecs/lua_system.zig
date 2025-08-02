@@ -18,34 +18,58 @@ pub fn fromLua(state: lua.State, allocator: std.mem.Allocator) !Self {
     if (lua.clib.lua_type(state.state, -1) != lua.clib.LUA_TTABLE) {
         @panic("Use system builder for lua systems");
     }
-    lua.clib.lua_getfield(state.state, -1, "callback");
+    if (lua.clib.lua_getfield(state.state, -1, "callback") != lua.clib.LUA_TFUNCTION) {
+        @panic("expected callback to be a function");
+    }
     const system = try state.makeRef();
-    lua.clib.lua_getfield(state.state, -1, "queries");
+    if (lua.clib.lua_getfield(state.state, -1, "queries") != lua.clib.LUA_TTABLE) {
+        @panic("Expected queries to be a table");
+    }
     const queries_len = lua.clib.lua_rawlen(state.state, -1);
+    std.debug.print("Got length of queries {}\n", .{queries_len});
     const components = try allocator.alloc([]ComponentId, @intCast(queries_len));
+    std.debug.assert(components.len == queries_len);
     for (1..queries_len + 1) |index| {
-        lua.clib.lua_geti(state.state, -1, @intCast(index));
+        std.debug.print("Looking at queries at index {}\n", .{index});
+        if (lua.clib.lua_geti(state.state, -1, @intCast(index)) != lua.clib.LUA_TTABLE) {
+            @panic("expected query to be a tabel of components\n");
+        }
         // top of the stack
         const components_len = lua.clib.lua_rawlen(state.state, -1);
+        std.debug.print("Got length of components {}\n", .{components_len});
         components[index - 1] = try allocator.alloc(ComponentId, @intCast(components_len));
+        std.debug.assert(components[index - 1].len == components_len);
         for (1..components_len + 1) |cindex| {
-            lua.clib.lua_geti(state.state, -1, @intCast(cindex));
+            std.debug.print("\tLooking at component at index {}\n", .{cindex});
+            if (lua.clib.lua_geti(state.state, -1, @intCast(cindex)) != lua.clib.LUA_TTABLE) {
+                @panic("Expected component to be a table");
+            }
             // top is the component thing now
-            lua.clib.lua_getfield(state.state, -1, "component_hash");
-            const cstr = lua.clib.lua_tolstring(state.state, 1, null);
-            const str = std.mem.cStrToSlice(u8, cstr);
+            if (lua.clib.lua_getfield(state.state, -1, "component_hash") != lua.clib.LUA_TSTRING) {
+                @panic("Expected component_hash to be a string");
+            }
+            const cstr = lua.clib.lua_tolstring(state.state, -1, null);
+            std.debug.assert(cstr != null);
+            const str: []const u8 = std.mem.sliceTo(cstr, 0);
             const hash = try std.fmt.parseInt(u64, str, 10);
             // pop the hash
             try state.pop();
+            // pop the component
+            try state.pop();
             components[index - 1][cindex - 1] = hash;
         }
+        // pop the components table
+        try state.pop();
     }
-    // pop the table
+    // pop the queries table
     try state.pop();
+    // pop the system builder
+    try state.pop();
+    std.debug.assert(state.stackSize() == 0);
     return .{
         .allocator = allocator,
         .system = system,
-        .components = components,
+        .components = @ptrCast(components),
     };
 }
 

@@ -1,13 +1,15 @@
----@param iterator Query
----@return fun(): lightuserdata[]?
+---@generic T
+---@param iterator Query<T>
+---@return fun(): T?
 local function query(iterator)
 	return function()
 		return iterator:next()
 	end
 end
 
----@param iterator Query
----@return lightuserdata[], boolean
+---@generic T
+---@param iterator Query<T>
+---@return T, boolean
 local function single(iterator)
 	local res = iterator:next()
 	if res == nil then

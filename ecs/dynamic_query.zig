@@ -126,7 +126,7 @@ pub const DynamicQueryIter = struct {
     }
 
     pub fn luaPush(self: *Self, state: *clua.lua_State) void {
-        std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
+        // std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
         const udata: *utils.ZigPointer(Self) = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(Self))) orelse @panic("lua could not allocate memory");
         udata.* = utils.ZigPointer(Self){ .ptr = self };
         if (clua.luaL_getmetatable(state, MetaTableName) == 0) {

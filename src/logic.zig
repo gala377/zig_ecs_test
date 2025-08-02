@@ -63,6 +63,8 @@ pub fn installMainLogic(game: *Game) !void {
             .callback = ref,
         },
     });
+
+    try game.addLuaSystem("scripts/test_system.lua");
 }
 
 const ButtonOpen = struct {

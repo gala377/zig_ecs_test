@@ -35,7 +35,7 @@ pub fn ExportLua(comptime T: type) type {
         const MetaTableName = T.comp_name ++ "_MetaTable";
 
         pub fn luaPush(self: *T, state: *clua.lua_State) void {
-            std.debug.print("Pushing value of t={s}\n", .{@typeName(T)});
+            // std.debug.print("Pushing value of t={s}\n", .{@typeName(T)});
             const allocated = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(T))) orelse @panic("lua could not allocate");
             const udata = @as(*utils.ZigPointer(T), @alignCast(@ptrCast(allocated)));
             udata.* = utils.ZigPointer(T){ .ptr = self };

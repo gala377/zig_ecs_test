@@ -5,9 +5,11 @@
 ---@field metatable_name string
 local CompSelector = {}
 
----@class Query: lightuserdata
+---@generic T
+---@class Query<T>
 local Query = {}
 
----@param self Query
----@return lightuserdata[]?
+---@generic T
+---@param self Query<T>
+---@return T?
 function Query:next() end

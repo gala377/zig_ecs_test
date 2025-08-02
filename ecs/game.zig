@@ -139,6 +139,18 @@ pub const Game = struct {
         try self.systems.append(system);
     }
 
+    pub fn addLuaSystem(self: *Self, path: []const u8) !void {
+        const cwd = std.fs.cwd();
+
+        var file = try cwd.openFile(path, .{});
+        defer file.close();
+        const contents = try file.readToEndAlloc(self.allocator, std.math.maxInt(usize));
+        defer self.allocator.free(contents);
+        try self.lua_state.load(contents);
+        const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
+        try self.lua_systems.append(system);
+    }
+
     pub fn addSystems(self: *Self, comptime systems: anytype) !void {
         inline for (systems) |s| {
             try self.addSystem(s);
@@ -324,7 +336,7 @@ pub const DynamicQuery = struct {
     }
 
     pub fn luaPush(self: *Self, state: *clua.lua_State) void {
-        std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
+        // std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
         const raw = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(Self))) orelse @panic("lua could not allocate memory");
         const udata: *utils.ZigPointer(Self) = @alignCast(@ptrCast(raw));
         udata.* = utils.ZigPointer(Self){ .ptr = self };
@@ -338,7 +350,7 @@ pub const DynamicQuery = struct {
     }
 
     pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
-        std.debug.print("calling next in zig\n", .{});
+        // std.debug.print("calling next in zig\n", .{});
         const ptr: *utils.ZigPointer(Self) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
         const self = ptr.ptr;
         const rest = self.next();

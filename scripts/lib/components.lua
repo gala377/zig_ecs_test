@@ -17,17 +17,17 @@ ecs.game = {}
 
 ---@type ecs.game.GameActions
 ecs.game.GameActions = {
-	component_hash = 11651504605562944385,
+	component_hash = "11651504605562944385",
 	metatable_name = "ecs.game.GameActions_MetaTable",
 }
 ---@type ecs.imgui.components.Button
 ecs.imgui.components.Button = {
-	component_hash = 12803121869393224583,
+	component_hash = "12803121869393224583",
 	metatable_name = "ecs.imgui.components.Button_MetaTable",
 }
 ---@type game_build.TestComponent
 game_build.TestComponent = {
-	component_hash = 15830503684399464143,
+	component_hash = "15830503684399464143",
 	metatable_name = "game_build.TestComponent_MetaTable",
 }
 
