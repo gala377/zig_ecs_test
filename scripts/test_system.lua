@@ -10,8 +10,7 @@ local query = require("scripts.lib.query").query
 ---@alias SystemParams [Button]
 ---@param buttons Query<SystemParams>
 local function run(buttons)
-	for comps in query(buttons) do
-		local button = comps[1]
+	for button in query(buttons) do
 		if button.clicked then
 			print("Got button click!")
 		end

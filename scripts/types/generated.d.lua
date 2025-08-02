@@ -10,6 +10,7 @@ local ecs = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
 ecs.game = {}
+local logic = {}
 
 -- END NAMESPACES
 
@@ -34,7 +35,18 @@ ecs.imgui.components.Button = {}
 ---@field private metatable_name string
 game_build.TestComponent = {}
 
+---@class logic.ButtonClose
+---@field private component_hash string
+---@field private metatable_name string
+logic.ButtonClose = {}
+
+---@class logic.ButtonOpen
+---@field private component_hash string
+---@field private metatable_name string
+logic.ButtonOpen = {}
+
+
 -- END TYPES
 
----@diagnostic enable: unused-local
 
+---@diagnostic enable: unused-local

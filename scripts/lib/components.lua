@@ -10,6 +10,7 @@ local ecs = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
 ecs.game = {}
+local logic = {}
 
 -- END NAMESPACES
 
@@ -30,6 +31,16 @@ game_build.TestComponent = {
 	component_hash = "15830503684399464143",
 	metatable_name = "game_build.TestComponent_MetaTable",
 }
+---@type logic.ButtonClose
+logic.ButtonClose = {
+	component_hash = "1528081635130897619",
+	metatable_name = "logic.ButtonClose_MetaTable",
+}
+---@type logic.ButtonOpen
+logic.ButtonOpen = {
+	component_hash = "13462119375884075759",
+	metatable_name = "logic.ButtonOpen_MetaTable",
+}
 
 -- END TYPES
 
@@ -39,5 +50,6 @@ game_build.TestComponent = {
 return {
 	game_build = game_build,
 	ecs = ecs,
+	logic = logic,
 }
 

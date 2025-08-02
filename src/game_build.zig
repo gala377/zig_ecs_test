@@ -4,6 +4,7 @@ const DecalartionGenerator = @import("ecs").DeclarationGenerator;
 const imgui = @import("ecs").imgui;
 const Component = @import("ecs").Component;
 const ExportLua = @import("ecs").component.ExportLua;
+const logic = @import("logic.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{
@@ -37,6 +38,10 @@ fn generate(allocator: std.mem.Allocator) !void {
     try ecs.game.registerDefaultComponentsForBuild(&generator);
     try imgui.exportBuild(&generator);
     try generator.registerComponentForBuild(TestComponent);
+    try generator.registerComponentsForBuild(.{
+        logic.ButtonClose,
+        logic.ButtonOpen,
+    });
 
     try generator.generate();
 }

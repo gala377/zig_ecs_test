@@ -12,13 +12,16 @@ const Button = imgui.components.Button;
 const Vec2 = ecs.utils.Vec2;
 const lua = @import("lua_lib");
 const Resource = ecs.Resource;
+const ExportLua = ecs.component.ExportLua;
 
 pub fn installMainLogic(game: *Game) !void {
     try game.addSystems(.{
         system(print_on_button),
-        system(close_on_button),
+        //system(close_on_button),
         system(call_ref),
     });
+    game.exportComponent(ButtonOpen);
+    game.exportComponent(ButtonClose);
 
     const ref = try game.luaLoad(
         \\ return function(button)
@@ -65,14 +68,17 @@ pub fn installMainLogic(game: *Game) !void {
     });
 
     try game.addLuaSystem("scripts/test_system.lua");
+    try game.addLuaSystem("scripts/close_on_click.lua");
 }
 
-const ButtonOpen = struct {
+pub const ButtonOpen = struct {
     pub usingnamespace Component(ButtonOpen);
+    pub usingnamespace ExportLua(ButtonOpen);
 };
 
-const ButtonClose = struct {
+pub const ButtonClose = struct {
     pub usingnamespace Component(ButtonClose);
+    pub usingnamespace ExportLua(ButtonClose);
 };
 
 const ButtonLua = struct {
