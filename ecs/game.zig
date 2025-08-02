@@ -3,9 +3,12 @@ const std = @import("std");
 const lua = @import("lua_lib");
 const rg = @import("raygui");
 const rl = @import("raylib");
+const utils = @import("utils.zig");
+const clua = lua.clib;
 
 const commands = @import("commands.zig");
 const Component = @import("component.zig").LibComponent;
+const ComponentId = @import("component.zig").ComponentId;
 const ExportLua = @import("component.zig").ExportLua;
 const DeclarationGenerator = @import("declaration_generator.zig");
 const EntityId = @import("scene.zig").EntityId;
@@ -15,6 +18,9 @@ const Scene = @import("scene.zig").Scene;
 const Resource = @import("resource.zig").Resource;
 const make_system = @import("system.zig").system;
 const DynamicQueryIter = @import("dynamic_query.zig").DynamicQueryIter;
+const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
+const LuaAccessibleOpaqueComponent = @import("dynamic_query.zig").LuaAccessibleOpaqueComponent;
+const LuaSystem = @import("lua_system.zig");
 
 const component_prefix = @import("build_options").components_prefix;
 
@@ -59,6 +65,7 @@ pub const Game = struct {
 
     inner_id: usize,
     systems: std.ArrayList(System),
+    lua_systems: std.ArrayList(LuaSystem),
     global_entity_storage: EntityStorage,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
@@ -72,6 +79,7 @@ pub const Game = struct {
             .systems = .init(allocator),
             .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator),
+            .lua_systems = .init(allocator),
         };
     }
 
@@ -87,6 +95,11 @@ pub const Game = struct {
             for (self.systems.items) |sys| {
                 sys(self);
             }
+            for (self.lua_systems.items) |*sys| {
+                sys.run(self, self.lua_state) catch {
+                    @panic("could not run lua system");
+                };
+            }
 
             rl.clearBackground(.black);
             rl.endDrawing();
@@ -101,6 +114,16 @@ pub const Game = struct {
         const global_components = self.global_entity_storage.query(components);
         const scene_components = if (self.current_scene) |*s| s.entity_storage.query(components) else null;
         return Query(components).init(global_components, scene_components);
+    }
+
+    pub fn dynamicQueryScope(self: *Self, components: []const ComponentId) !JoinedDynamicScope {
+        const global_scope = try self.global_entity_storage.dynamicQueryScope(components, .{});
+        const scene_scope = if (self.current_scene) |*s| try s.entity_storage.dynamicQueryScope(components, .{}) else null;
+        return JoinedDynamicScope{
+            .global_scope = global_scope,
+            .scene_scope = scene_scope,
+            .allocator = self.allocator,
+        };
     }
 
     pub fn getResource(self: *Self, comptime T: type) Resource(T) {
@@ -141,6 +164,10 @@ pub const Game = struct {
         if (self.current_scene) |*scene| {
             scene.deinit();
         }
+        for (self.lua_systems.items) |*system| {
+            system.deinit();
+        }
+        self.lua_systems.deinit();
         self.global_entity_storage.deinit();
         // INFO: components may hold references to lua so we need to
         // dealloc it last
@@ -176,7 +203,7 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
     try game.addSystem(&applyGameActions);
     if (export_lua) {
         game.exportComponent(GameActions);
-        try DynamicQueryIter.registerMetaTable(game.lua_state);
+        try DynamicQuery.registerMetaTable(game.lua_state);
     }
 }
 
@@ -247,3 +274,113 @@ pub fn Query(comptime components: anytype) type {
         }
     };
 }
+
+pub const JoinedDynamicScope = struct {
+    const Self = @This();
+    global_scope: DynamicQueryScope,
+    scene_scope: ?DynamicQueryScope,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *Self) void {
+        self.global_scope.deinit();
+        if (self.scene_scope) |*scope| scope.deinit();
+    }
+
+    pub fn iter(self: *Self) DynamicQuery {
+        return .init(
+            self.global_scope.iter(),
+            if (self.scene_scope) |*s| s.iter() else null,
+            self.allocator,
+        );
+    }
+};
+
+pub const DynamicQuery = struct {
+    const Self = @This();
+    const MetaTableName = "ecs." ++ @typeName(Self) ++ "_MetaTable";
+
+    global_components: DynamicQueryIter,
+    scene_components: ?DynamicQueryIter,
+    allocator: std.mem.Allocator,
+
+    pub fn init(global_components: DynamicQueryIter, scene_components: ?DynamicQueryIter, allocator: std.mem.Allocator) Self {
+        return .{
+            .global_components = global_components,
+            .scene_components = scene_components,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn next(self: *Self) ?[]LuaAccessibleOpaqueComponent {
+        while (self.global_components.next()) |c| {
+            return c;
+        }
+        if (self.scene_components) |*s| {
+            while (s.next()) |c| {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    pub fn luaPush(self: *Self, state: *clua.lua_State) void {
+        std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
+        const raw = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(Self))) orelse @panic("lua could not allocate memory");
+        const udata: *utils.ZigPointer(Self) = @alignCast(@ptrCast(raw));
+        udata.* = utils.ZigPointer(Self){ .ptr = self };
+        if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
+            @panic("Metatable " ++ MetaTableName ++ "not found");
+        }
+        // Assign the metatable to the userdata (stack: userdata, metatable)
+        if (clua.lua_setmetatable(state, -2) != 0) {
+            // @panic("object " ++ @typeName(T) ++ " already had a metatable");
+        }
+    }
+
+    pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
+        std.debug.print("calling next in zig\n", .{});
+        const ptr: *utils.ZigPointer(Self) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
+        const self = ptr.ptr;
+        const rest = self.next();
+        if (rest == null) {
+            clua.lua_pushnil(state);
+            return 1;
+        }
+        // get component pointers
+        const components = rest.?;
+
+        // create a table on the stack for components
+        clua.lua_createtable(state, @intCast(components.len), 0);
+
+        for (components, 1..) |component, idx| {
+            component.push(component.pointer, state);
+            clua.lua_seti(state, -2, @intCast(idx));
+        }
+
+        self.allocator.free(components);
+        return 1;
+    }
+
+    pub fn registerMetaTable(lstate: lua.State) !void {
+        const state = lstate.state;
+        if (clua.luaL_newmetatable(state, MetaTableName) != 1) {
+            @panic("Could not create metatable");
+        }
+        clua.lua_pushvalue(state, -1);
+        clua.lua_setfield(state, -2, "__index");
+        const methods = [_]clua.luaL_Reg{
+            .{
+                .name = "next",
+                .func = @ptrCast(&luaNext),
+            },
+            .{
+                .name = null,
+                .func = null,
+            },
+        };
+
+        clua.luaL_setfuncs(state, &methods[0], 0);
+        // Pop metatable
+        clua.lua_pop(state, 1);
+    }
+};

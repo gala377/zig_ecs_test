@@ -36,9 +36,9 @@ pub const DynamicQueryScope = struct {
     storage: *Storage,
     allocator: std.mem.Allocator,
 
-    pub fn init(storage: *Storage, component_ids: []ComponentId, allocator: std.mem.Allocator) !DynamicQueryScope {
-        var sorted = try allocator.dupe(ComponentId, component_ids);
-        std.sort.heap(ComponentId, &sorted, {}, std.sort.asc(ComponentId));
+    pub fn init(storage: *Storage, component_ids: []const ComponentId, allocator: std.mem.Allocator) !DynamicQueryScope {
+        const sorted = try allocator.dupe(ComponentId, component_ids);
+        std.sort.heap(ComponentId, sorted, {}, std.sort.asc(ComponentId));
         return .{
             .component_ids = component_ids,
             .sorted_component_ids = sorted,
@@ -186,7 +186,7 @@ pub const DynamicQueryIter = struct {
     }
 };
 
-const LuaAccessibleOpaqueComponent = struct {
+pub const LuaAccessibleOpaqueComponent = struct {
     pointer: *anyopaque,
     push: LuaPush,
 };
