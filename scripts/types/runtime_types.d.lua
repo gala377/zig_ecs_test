@@ -5,11 +5,11 @@
 ---@field metatable_name string
 local CompSelector = {}
 
----@generic T
+---@generic T: { [integer]: any }
 ---@class Query<T>
 local Query = {}
 
 ---@generic T
----@param self Query<T>
----@return T?
+---@param self Query<`T`>
+---@return `T`?
 function Query:next() end

@@ -5,12 +5,13 @@ local system = require("scripts.lib.system")
 local components = require("scripts.lib.components")
 local Button = components.ecs.imgui.components.Button
 
-local query = require("scripts.lib.query").query
+local query = require("scripts.lib.query")
 
 ---@alias SystemParams [Button]
 ---@param buttons Query<SystemParams>
 local function run(buttons)
-	for button in query(buttons) do
+	for button in query.iter(buttons) do
+		---@cast button Button
 		if button.clicked then
 			print("Got button click!")
 		end
