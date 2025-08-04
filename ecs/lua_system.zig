@@ -14,6 +14,9 @@ components: [][]const ComponentId,
 system: lua.Ref,
 allocator: std.mem.Allocator,
 
+scopes: []DynamicScope,
+iters: []DynamicQuery,
+
 pub fn fromLua(state: lua.State, allocator: std.mem.Allocator) !Self {
     if (lua.clib.lua_type(state.state, -1) != lua.clib.LUA_TTABLE) {
         @panic("Use system builder for lua systems");
@@ -70,30 +73,26 @@ pub fn fromLua(state: lua.State, allocator: std.mem.Allocator) !Self {
         .allocator = allocator,
         .system = system,
         .components = @ptrCast(components),
+        .scopes = try allocator.alloc(DynamicScope, components.len),
+        .iters = try allocator.alloc(DynamicQuery, components.len),
     };
 }
 
 pub fn run(self: *Self, game: *Game, state: lua.State) !void {
-    const scopes = try self.allocator.alloc(DynamicScope, self.components.len);
-    const iters = try self.allocator.alloc(DynamicQuery, self.components.len);
-    defer {
-        for (scopes) |*s| {
-            s.deinit();
-        }
-        self.allocator.free(scopes);
-        self.allocator.free(iters);
-    }
+    defer for (self.scopes) |*s| {
+        s.deinit();
+    };
     for (self.components, 0..) |q, i| {
-        scopes[i] = try game.dynamicQueryScope(q);
+        self.scopes[i] = try game.dynamicQueryScope(q);
     }
-    for (scopes, 0..) |*s, i| {
-        iters[i] = s.iter();
+    for (self.scopes, 0..) |*s, i| {
+        self.iters[i] = s.iter();
     }
     state.pushRef(self.system);
-    for (iters) |*iter| {
+    for (self.iters) |*iter| {
         iter.luaPush(state.state);
     }
-    lua.clib.lua_callk(state.state, @intCast(iters.len), 0, 0, null);
+    lua.clib.lua_callk(state.state, @intCast(self.iters.len), 0, 0, null);
 }
 
 pub fn deinit(self: *Self) void {
@@ -102,4 +101,6 @@ pub fn deinit(self: *Self) void {
         self.allocator.free(comp);
     }
     self.allocator.free(self.components);
+    self.allocator.free(self.scopes);
+    self.allocator.free(self.iters);
 }

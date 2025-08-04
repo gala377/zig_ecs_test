@@ -7,6 +7,12 @@
 
 ## What next
 
+- fix holding hashes as strings:
+    lua supports 64 bit integers and will use them if the value
+    fits in them so our hashes can stay as raw integers which will
+    speed up iteration.
+
+
 - Creating components/entities at runtime - maybe something like command from bevy? [#Commands]
 - Adding and removing components [[#Reallocating archetypes]]
 - creating components/entities in lua [[#Exposing constructors to lua]]
