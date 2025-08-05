@@ -191,7 +191,7 @@ pub const DynamicScopeOptions = struct {
 ///
 /// Does not take ownership of the components slice. It has be the freed by the caller.
 pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, options: DynamicScopeOptions) !DynamicQueryScope {
-    const allocator = if (options.allocator) |a| a else self.allocator;
+    const allocator = options.allocator orelse self.allocator;
     return .init(self, components, allocator);
 }
 

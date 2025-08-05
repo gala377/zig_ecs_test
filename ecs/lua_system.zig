@@ -13,6 +13,7 @@ const Self = @This();
 components: [][]const ComponentId,
 system: lua.Ref,
 allocator: std.mem.Allocator,
+iters_allocator: std.heap.ArenaAllocator,
 
 scopes: []DynamicScope,
 iters: []DynamicQuery,
@@ -69,21 +70,21 @@ pub fn fromLua(state: lua.State, allocator: std.mem.Allocator) !Self {
     // pop the system builder
     try state.pop();
     std.debug.assert(state.stackSize() == 0);
+
+    const iter_allocator = std.heap.ArenaAllocator.init(allocator);
     return .{
         .allocator = allocator,
         .system = system,
         .components = @ptrCast(components),
+        .iters_allocator = iter_allocator,
         .scopes = try allocator.alloc(DynamicScope, components.len),
         .iters = try allocator.alloc(DynamicQuery, components.len),
     };
 }
 
 pub fn run(self: *Self, game: *Game, state: lua.State) !void {
-    defer for (self.scopes) |*s| {
-        s.deinit();
-    };
     for (self.components, 0..) |q, i| {
-        self.scopes[i] = try game.dynamicQueryScope(q);
+        self.scopes[i] = try game.dynamicQueryScopeOpts(q, .{ .allocator = self.iters_allocator.allocator() });
     }
     for (self.scopes, 0..) |*s, i| {
         self.iters[i] = s.iter();
@@ -93,6 +94,9 @@ pub fn run(self: *Self, game: *Game, state: lua.State) !void {
         iter.luaPush(state.state);
     }
     lua.clib.lua_callk(state.state, @intCast(self.iters.len), 0, 0, null);
+    if (!self.iters_allocator.reset(.retain_capacity)) {
+        @panic("could not reset arena allocator");
+    }
 }
 
 pub fn deinit(self: *Self) void {
@@ -103,4 +107,5 @@ pub fn deinit(self: *Self) void {
     self.allocator.free(self.components);
     self.allocator.free(self.scopes);
     self.allocator.free(self.iters);
+    self.iters_allocator.deinit();
 }

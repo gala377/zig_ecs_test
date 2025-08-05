@@ -1,28 +1,28 @@
 const std = @import("std");
+const component_prefix = @import("build_options").components_prefix;
 
 const lua = @import("lua_lib");
+const clua = lua.clib;
 const rg = @import("raygui");
 const rl = @import("raylib");
-const utils = @import("utils.zig");
-const clua = lua.clib;
 
 const commands = @import("commands.zig");
 const Component = @import("component.zig").LibComponent;
 const ComponentId = @import("component.zig").ComponentId;
-const ExportLua = @import("component.zig").ExportLua;
 const DeclarationGenerator = @import("declaration_generator.zig");
-const EntityId = @import("scene.zig").EntityId;
-const EntityStorage = @import("entity_storage.zig");
-const PtrTuple = @import("utils.zig").PtrTuple;
-const Scene = @import("scene.zig").Scene;
-const Resource = @import("resource.zig").Resource;
-const make_system = @import("system.zig").system;
 const DynamicQueryIter = @import("dynamic_query.zig").DynamicQueryIter;
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
+const DynamicScopeOptions = @import("entity_storage.zig").DynamicScopeOptions;
+const EntityId = @import("scene.zig").EntityId;
+const EntityStorage = @import("entity_storage.zig");
+const ExportLua = @import("component.zig").ExportLua;
 const LuaAccessibleOpaqueComponent = @import("dynamic_query.zig").LuaAccessibleOpaqueComponent;
 const LuaSystem = @import("lua_system.zig");
-
-const component_prefix = @import("build_options").components_prefix;
+const make_system = @import("system.zig").system;
+const PtrTuple = @import("utils.zig").PtrTuple;
+const Resource = @import("resource.zig").Resource;
+const Scene = @import("scene.zig").Scene;
+const utils = @import("utils.zig");
 
 pub const Size = struct {
     width: i32,
@@ -123,6 +123,16 @@ pub const Game = struct {
             .global_scope = global_scope,
             .scene_scope = scene_scope,
             .allocator = self.allocator,
+        };
+    }
+
+    pub fn dynamicQueryScopeOpts(self: *Self, components: []const ComponentId, options: DynamicScopeOptions) !JoinedDynamicScope {
+        const global_scope = try self.global_entity_storage.dynamicQueryScope(components, options);
+        const scene_scope = if (self.current_scene) |*s| try s.entity_storage.dynamicQueryScope(components, options) else null;
+        return JoinedDynamicScope{
+            .global_scope = global_scope,
+            .scene_scope = scene_scope,
+            .allocator = options.allocator orelse self.allocator,
         };
     }
 
