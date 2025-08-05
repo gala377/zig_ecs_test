@@ -4,14 +4,9 @@
 - Exporting components to lua with derivation
 - Accessing components from lua
 - Writing systems in lua
+- Hash is stored as integers in lua
 
 ## What next
-
-- fix holding hashes as strings:
-    lua supports 64 bit integers and will use them if the value
-    fits in them so our hashes can stay as raw integers which will
-    speed up iteration. The problem is that our hash is unsiged where lua int is signed.
-
 
 - Creating components/entities at runtime - maybe something like command from bevy? [#Commands]
 - Adding and removing components [[#Reallocating archetypes]]
