@@ -54,6 +54,11 @@ Nullable types of convertible types.
 
 Later we could technically even do enums and tagged unions.
 
+It means for now that we just need to add generated command like
+`fromLua(state: lua.State, allocator: std.mem.Allocator) !Self`.
+
+If a component has non-default, no-lua constructible field it should probably
+just throw runtime error and it should be fine.
 
 ### Lua components
 
