@@ -42,14 +42,14 @@ pub const LuaSystemErrors = error{
 };
 
 fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSystemErrors!struct { system: lua.Ref, components: [][]ComponentId } {
-    if (lua.clib.lua_type(state.state, -1) != lua.clib.LUA_TTABLE) {
+    if (lua.clib.lua_type(state.state, 1) != lua.clib.LUA_TTABLE) {
         return LuaSystemErrors.expectedTable;
     }
-    if (lua.clib.lua_getfield(state.state, -1, "callback") != lua.clib.LUA_TFUNCTION) {
+    if (lua.clib.lua_getfield(state.state, 1, "callback") != lua.clib.LUA_TFUNCTION) {
         return LuaSystemErrors.expectedFunction;
     }
     const system = state.makeRef() catch return LuaSystemErrors.unableToMakeCallback;
-    if (lua.clib.lua_getfield(state.state, -1, "queries") != lua.clib.LUA_TTABLE) {
+    if (lua.clib.lua_getfield(state.state, 1, "queries") != lua.clib.LUA_TTABLE) {
         return LuaSystemErrors.expectedTable;
     }
     const queries_len = lua.clib.lua_rawlen(state.state, -1);

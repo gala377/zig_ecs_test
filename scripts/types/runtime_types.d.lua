@@ -1,4 +1,5 @@
 ---@meta
+---@diagnostic disable: unused-local
 
 ---@class CompSelector
 ---@field component_hash integer
@@ -13,3 +14,9 @@ local Query = {}
 ---@param self Query<`T`>
 ---@return `T`?
 function Query:next() end
+
+---@param name string
+---@return integer
+function ComponentHash(name) end
+
+---@diagnostic enable: unused-local

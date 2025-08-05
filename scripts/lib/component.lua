@@ -9,10 +9,12 @@ end
 ---@alias LuaComp<T> `T` & { component_hash: string }
 
 ---@generic T: table
+---@param name string file unique name of the component
 ---@param init? `T` initial value for the component
 ---@return `T` & { component_hash: string }
-return function(init)
+return function(name, init)
 	local ret = init or {}
-	ret.component_hash = script_path() .. ".component"
+	local fq_name = script_path() .. name .. "$lua"
+	ret.component_hash = ComponentHash(fq_name)
 	return ret
 end

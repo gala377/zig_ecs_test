@@ -7,6 +7,7 @@ const rg = @import("raygui");
 const rl = @import("raylib");
 
 const commands = @import("commands.zig");
+const component_mod = @import("component.zig");
 const Component = @import("component.zig").LibComponent;
 const ComponentId = @import("component.zig").ComponentId;
 const DeclarationGenerator = @import("declaration_generator.zig");
@@ -227,6 +228,23 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
         game.exportComponent(GameActions);
         try DynamicQuery.registerMetaTable(game.lua_state);
     }
+    const state = game.lua_state.state;
+    lua.clib.lua_pushcclosure(state, &luaHash, 0);
+    lua.clib.lua_setglobal(state, "ComponentHash");
+}
+
+fn luaHash(state: ?*lua.clib.lua_State) callconv(.c) c_int {
+    var string_len: usize = undefined;
+    // 1 refers to the first argument, from the bottom of the stack
+    const lstr: [*c]const u8 = lua.clib.lua_tolstring(state, 1, &string_len);
+    if (lstr == null) {
+        @panic("Could not hash, not a string");
+    }
+    const str: []const u8 = lstr[0..string_len];
+    const comp_id = component_mod.newComponentId(str);
+    const lua_int: i64 = @bitCast(comp_id);
+    lua.clib.lua_pushinteger(state, lua_int);
+    return 1;
 }
 
 pub fn registerDefaultComponentsForBuild(generator: *DeclarationGenerator) !void {
