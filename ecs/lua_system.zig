@@ -19,44 +19,59 @@ scopes: []DynamicScope,
 iters: []DynamicQuery,
 
 pub fn fromLua(state: lua.State, allocator: std.mem.Allocator) !Self {
+    const from_lua = try readComponentsFromLau(state, allocator);
+
+    const iter_allocator = std.heap.ArenaAllocator.init(allocator);
+    return .{
+        .allocator = allocator,
+        .system = from_lua.system,
+        .components = @ptrCast(from_lua.components),
+        .iters_allocator = iter_allocator,
+        .scopes = try allocator.alloc(DynamicScope, from_lua.components.len),
+        .iters = try allocator.alloc(DynamicQuery, from_lua.components.len),
+    };
+}
+
+pub const LuaSystemErrors = error{
+    expectedTable,
+    expectedFunction,
+    expectedInteger,
+};
+
+fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSystemErrors!struct { system: lua.Ref, components: [][]ComponentId } {
     if (lua.clib.lua_type(state.state, -1) != lua.clib.LUA_TTABLE) {
-        @panic("Use system builder for lua systems");
+        return LuaSystemErrors.expectedTable;
     }
     if (lua.clib.lua_getfield(state.state, -1, "callback") != lua.clib.LUA_TFUNCTION) {
-        @panic("expected callback to be a function");
+        return LuaSystemErrors.expectedFunction;
     }
     const system = try state.makeRef();
     if (lua.clib.lua_getfield(state.state, -1, "queries") != lua.clib.LUA_TTABLE) {
-        @panic("Expected queries to be a table");
+        return LuaSystemErrors.expectedTable;
     }
     const queries_len = lua.clib.lua_rawlen(state.state, -1);
-    std.debug.print("Got length of queries {}\n", .{queries_len});
     const components = try allocator.alloc([]ComponentId, @intCast(queries_len));
     std.debug.assert(components.len == queries_len);
     for (1..queries_len + 1) |index| {
-        std.debug.print("Looking at queries at index {}\n", .{index});
         if (lua.clib.lua_geti(state.state, -1, @intCast(index)) != lua.clib.LUA_TTABLE) {
-            @panic("expected query to be a tabel of components\n");
+            return LuaSystemErrors.expectedTable;
         }
         // top of the stack
         const components_len = lua.clib.lua_rawlen(state.state, -1);
-        std.debug.print("Got length of components {}\n", .{components_len});
         components[index - 1] = try allocator.alloc(ComponentId, @intCast(components_len));
-        std.debug.assert(components[index - 1].len == components_len);
         for (1..components_len + 1) |cindex| {
-            std.debug.print("\tLooking at component at index {}\n", .{cindex});
             if (lua.clib.lua_geti(state.state, -1, @intCast(cindex)) != lua.clib.LUA_TTABLE) {
-                @panic("Expected component to be a table");
+                return LuaSystemErrors.expectedTable;
             }
             // top is the component thing now
-            if (lua.clib.lua_getfield(state.state, -1, "component_hash") != lua.clib.LUA_TSTRING) {
-                @panic("Expected component_hash to be a string");
+            if (lua.clib.lua_getfield(state.state, -1, "component_hash") != lua.clib.LUA_TNUMBER) {
+                return LuaSystemErrors.expectedInteger;
             }
             const cstr = lua.clib.lua_tolstring(state.state, -1, null);
             std.debug.assert(cstr != null);
             const str: []const u8 = std.mem.sliceTo(cstr, 0);
             const hash = try std.fmt.parseInt(u64, str, 10);
-            // pop the hash
+
             try state.pop();
             // pop the component
             try state.pop();
@@ -70,15 +85,9 @@ pub fn fromLua(state: lua.State, allocator: std.mem.Allocator) !Self {
     // pop the system builder
     try state.pop();
     std.debug.assert(state.stackSize() == 0);
-
-    const iter_allocator = std.heap.ArenaAllocator.init(allocator);
     return .{
-        .allocator = allocator,
         .system = system,
-        .components = @ptrCast(components),
-        .iters_allocator = iter_allocator,
-        .scopes = try allocator.alloc(DynamicScope, components.len),
-        .iters = try allocator.alloc(DynamicQuery, components.len),
+        .components = components,
     };
 }
 
@@ -95,7 +104,7 @@ pub fn run(self: *Self, game: *Game, state: lua.State) !void {
     }
     lua.clib.lua_callk(state.state, @intCast(self.iters.len), 0, 0, null);
     if (!self.iters_allocator.reset(.retain_capacity)) {
-        @panic("could not reset arena allocator");
+        return error.couldNotRestAllocator;
     }
 }
 

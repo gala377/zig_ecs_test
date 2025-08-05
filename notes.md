@@ -10,7 +10,7 @@
 - fix holding hashes as strings:
     lua supports 64 bit integers and will use them if the value
     fits in them so our hashes can stay as raw integers which will
-    speed up iteration.
+    speed up iteration. The problem is that our hash is unsiged where lua int is signed.
 
 
 - Creating components/entities at runtime - maybe something like command from bevy? [#Commands]
@@ -23,6 +23,21 @@
 Commands struct would need to maybe even allocate components and entity.
 It can even reserve id for it. It just needs to defer inserting it into
 archetypes so it is not immediately accessible to other systems.
+
+### Better components storage
+
+Because we hold entities as archetypes we can hold components
+inline as archetypes meaning as slice of slices for example.
+This would speed up iterating over them as it mean that getting 
+next component is just incrementing an index instead of 
+doing a hashmap lookup.
+
+It would help with cache locality. Pointer stability would be a problem when
+moving entity do different archetype but as we hold components in the archetype
+we don't need to hold pointers within entity anymore. 
+
+When we move entity we can just mark the index as empty and reuse it 
+later when new entity of this archetype gets created. 
 
 ### Reallocating archetypes
 
