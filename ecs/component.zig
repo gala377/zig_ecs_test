@@ -142,7 +142,7 @@ pub fn ExportLua(comptime T: type) type {
                     else => {},
                 }
             }
-            try writer.writeAll("---@field private component_hash string\n");
+            try writer.writeAll("---@field private component_hash integer\n");
             try writer.writeAll("---@field private metatable_name string\n");
             const emit_local = std.mem.indexOfScalar(u8, T.comp_name, '.') == null;
             if (emit_local) {
@@ -157,12 +157,13 @@ pub fn ExportLua(comptime T: type) type {
             if (emit_local) {
                 try writer.writeAll("local ");
             }
+            const hash: i64 = @bitCast(T.comp_id);
             try writer.print(
                 \\{s} = {{
-                \\  component_hash = "{}",
+                \\  component_hash = {d},
                 \\  metatable_name = "{s}",
                 \\}}
-            , .{ T.comp_name, T.comp_id, MetaTableName });
+            , .{ T.comp_name, hash, MetaTableName });
             try writer.writeAll("\n");
         }
     };

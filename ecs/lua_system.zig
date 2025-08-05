@@ -36,6 +36,9 @@ pub const LuaSystemErrors = error{
     expectedTable,
     expectedFunction,
     expectedInteger,
+    unableToMakeCallback,
+    outOfMemory,
+    stackEmpty,
 };
 
 fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSystemErrors!struct { system: lua.Ref, components: [][]ComponentId } {
@@ -45,12 +48,12 @@ fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSyst
     if (lua.clib.lua_getfield(state.state, -1, "callback") != lua.clib.LUA_TFUNCTION) {
         return LuaSystemErrors.expectedFunction;
     }
-    const system = try state.makeRef();
+    const system = state.makeRef() catch return LuaSystemErrors.unableToMakeCallback;
     if (lua.clib.lua_getfield(state.state, -1, "queries") != lua.clib.LUA_TTABLE) {
         return LuaSystemErrors.expectedTable;
     }
     const queries_len = lua.clib.lua_rawlen(state.state, -1);
-    const components = try allocator.alloc([]ComponentId, @intCast(queries_len));
+    const components = allocator.alloc([]ComponentId, @intCast(queries_len)) catch return LuaSystemErrors.outOfMemory;
     std.debug.assert(components.len == queries_len);
     for (1..queries_len + 1) |index| {
         if (lua.clib.lua_geti(state.state, -1, @intCast(index)) != lua.clib.LUA_TTABLE) {
@@ -58,7 +61,7 @@ fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSyst
         }
         // top of the stack
         const components_len = lua.clib.lua_rawlen(state.state, -1);
-        components[index - 1] = try allocator.alloc(ComponentId, @intCast(components_len));
+        components[index - 1] = allocator.alloc(ComponentId, @intCast(components_len)) catch return LuaSystemErrors.outOfMemory;
         for (1..components_len + 1) |cindex| {
             if (lua.clib.lua_geti(state.state, -1, @intCast(cindex)) != lua.clib.LUA_TTABLE) {
                 return LuaSystemErrors.expectedTable;
@@ -67,23 +70,25 @@ fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSyst
             if (lua.clib.lua_getfield(state.state, -1, "component_hash") != lua.clib.LUA_TNUMBER) {
                 return LuaSystemErrors.expectedInteger;
             }
-            const cstr = lua.clib.lua_tolstring(state.state, -1, null);
-            std.debug.assert(cstr != null);
-            const str: []const u8 = std.mem.sliceTo(cstr, 0);
-            const hash = try std.fmt.parseInt(u64, str, 10);
-
-            try state.pop();
+            var is_num: c_int = undefined;
+            const int_hash = lua.clib.lua_tointegerx(state.state, -1, &is_num);
+            if (is_num == 0) {
+                return LuaSystemErrors.expectedInteger;
+            }
+            const hash: u64 = @bitCast(int_hash);
+            // pop the hash
+            state.pop() catch return LuaSystemErrors.stackEmpty;
             // pop the component
-            try state.pop();
+            state.pop() catch return LuaSystemErrors.stackEmpty;
             components[index - 1][cindex - 1] = hash;
         }
         // pop the components table
-        try state.pop();
+        state.pop() catch return LuaSystemErrors.stackEmpty;
     }
     // pop the queries table
-    try state.pop();
+    state.pop() catch return LuaSystemErrors.stackEmpty;
     // pop the system builder
-    try state.pop();
+    state.pop() catch return LuaSystemErrors.stackEmpty;
     std.debug.assert(state.stackSize() == 0);
     return .{
         .system = system,
