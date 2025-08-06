@@ -7,6 +7,7 @@ local components = require("scripts.lib.components")
 local Button = components.ecs.imgui.components.Button
 local GameActions = components.ecs.game.GameActions
 local ButtonClose = components.logic.ButtonClose
+local ButtonOpen = components.logic.ButtonOpen
 
 local query = require("scripts.lib.query")
 
@@ -26,7 +27,7 @@ local function click_run(buttons, actions)
 	for button in query.iter(buttons) do
 		---@cast button Button
 		if button.clicked then
-			print("Got button click!")
+			print("Got button click of " .. button.title)
 			---@type boolean, GameActions
 			local _, ga = query.single(actions)
 			if ga.test_field == nil then
@@ -39,7 +40,18 @@ local function click_run(buttons, actions)
 	end
 end
 
+local called = 1
+local function change_title(buttons)
+	local _, button, _ = query.single(buttons)
+	---@cast button Button
+	if button.clicked then
+		button.title = "Clicked " .. tostring(called) .. " times"
+		called = called + 1
+	end
+end
+
 return {
 	system.new(click_run):query(Button):query(GameActions),
 	system.new(close_run):query(Button, ButtonClose):query(GameActions),
+	system.new(change_title):query(Button, ButtonOpen),
 }

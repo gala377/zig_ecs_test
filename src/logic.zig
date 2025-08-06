@@ -36,13 +36,14 @@ pub fn installMainLogic(game: *Game) !void {
     const close_title: [:0]u8 = try game.allocator.dupeZ(u8, "Close");
     const lua_title: [:0]u8 = try game.allocator.dupeZ(u8, "Lua Callback");
 
-    const buttons_size = Vec2{ .x = 50.0, .y = 25.0 };
+    const buttons_size = Vec2{ .x = 100.0, .y = 25.0 };
     const position = Vec2{ .x = 50.0, .y = 50.0 };
     _ = try game.newGlobalEntity(.{
         imgui.components.Button{
             .pos = position,
             .size = buttons_size,
             .title = @ptrCast(open_title),
+            .allocator = game.allocator,
         },
         ButtonOpen{},
     });
@@ -52,6 +53,7 @@ pub fn installMainLogic(game: *Game) !void {
             .size = buttons_size,
             .title = @ptrCast(close_title),
             .visible = false,
+            .allocator = game.allocator,
         },
         ButtonClose{},
     });
@@ -61,6 +63,7 @@ pub fn installMainLogic(game: *Game) !void {
             .pos = position.add_y(buttons_size.y * 2),
             .size = buttons_size,
             .title = @ptrCast(lua_title),
+            .allocator = game.allocator,
         },
         ButtonLua{
             .callback = ref,

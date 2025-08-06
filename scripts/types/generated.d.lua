@@ -25,6 +25,7 @@ local logic = {}
 ecs.game.GameActions = {}
 
 ---@class ecs.imgui.components.Button
+---@field title string
 ---@field visible boolean
 ---@field clicked boolean
 ---@field private component_hash integer

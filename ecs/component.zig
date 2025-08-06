@@ -244,7 +244,7 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
             return try luaReadValue(state, opt.child, index, allocator);
         },
         .pointer => |ptr| if (ptr.size == .slice) {
-            if (ptr.child == u8) {
+            if (ptr.child == u8 and ptr.sentinel_ptr == null) {
                 // its a string, thats a problem we need to do allocation
                 if (clua.lua_type(state, index) != clua.LUA_TSTRING) {
                     return error.expectedString;
@@ -252,6 +252,15 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
                 var size: usize = undefined;
                 const lstr = clua.lua_tolstring(state, index, &size);
                 const str = try allocator.?.dupe(u8, lstr[0..size]);
+                return @ptrCast(str);
+            } else if (ptr.child == u8) {
+                // its a string, thats a problem we need to do allocation
+                if (clua.lua_type(state, index) != clua.LUA_TSTRING) {
+                    return error.expectedString;
+                }
+                var size: usize = undefined;
+                const lstr = clua.lua_tolstring(state, index, &size);
+                const str = try allocator.?.dupeZ(u8, lstr[0..size :0]);
                 return @ptrCast(str);
             }
             // now array
@@ -312,7 +321,8 @@ fn luaPushValue(state: *clua.lua_State, val: anytype) !void {
                 // this is a string
                 _ = clua.lua_pushlstring(state, @ptrCast(val), val.len);
             } else if (ptr.child == u8) {
-                @panic("sentinel strings not supported yet");
+                // TODO: we assume sentinel pointer is null byte might be wrong assumption
+                _ = clua.lua_pushstring(state, @ptrCast(val));
             } else {
                 clua.lua_newtable(state);
                 for (val, 1..) |el, index| {
