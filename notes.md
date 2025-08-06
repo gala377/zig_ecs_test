@@ -5,6 +5,7 @@
 - Accessing components from lua
 - Writing systems in lua
 - Hash is stored as integers in lua
+- exposing a lot of fields to lua
 
 ## What next
 
@@ -18,6 +19,12 @@
 Commands struct would need to maybe even allocate components and entity.
 It can even reserve id for it. It just needs to defer inserting it into
 archetypes so it is not immediately accessible to other systems.
+
+### Exposing more types to lua
+
+For now the last 2 types that are exposable are structs and pointers to one element.
+We could also try later to do enums and even later tagged unions but for now
+we don't plan on supporting those.
 
 ### Better components storage
 

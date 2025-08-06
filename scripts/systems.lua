@@ -38,6 +38,8 @@ local function click_run(buttons, actions)
 				ga.test_field = ga.test_field + 1
 			end
 			print("clicked " .. tostring(ga.test_field) .. " times")
+			ga.log[#ga.log + 1] = button.title
+			print("click log: " .. table.concat(ga.log:totable(), ","))
 		end
 	end
 end

@@ -235,6 +235,18 @@ pub const GameActions = struct {
     should_close: bool,
     test_field: ?isize = null,
     test_field_2: ?f64 = null,
+    log: [][]const u8,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *GameActions, allocator: std.mem.Allocator) void {
+        _ = allocator;
+        for (self.log) |log| {
+            self.allocator.free(log);
+        }
+        if (self.log.len > 0) {
+            self.allocator.free(self.log);
+        }
+    }
 };
 
 pub const LuaRuntime = struct {
@@ -243,7 +255,7 @@ pub const LuaRuntime = struct {
 };
 
 pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
-    _ = try game.addResource(GameActions{ .should_close = false });
+    _ = try game.addResource(GameActions{ .should_close = false, .allocator = game.allocator, .log = &.{} });
     _ = try game.addResource(LuaRuntime{ .lua = &game.lua_state });
     try game.addSystem(&applyGameActions);
     if (export_lua) {

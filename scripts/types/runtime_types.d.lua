@@ -19,4 +19,18 @@ function Query:next() end
 ---@return integer
 function ComponentHash(name) end
 
+---@generic T
+---@class Slice: { [integer]: T }
+local Slice = {}
+
+---@generic T
+---@param self Slice<T>
+---@return T[]
+function Slice:totable() end
+
+---@generic T
+---@param self Slice<T>
+---@return integer
+function Slice:len() end
+
 ---@diagnostic enable: unused-local

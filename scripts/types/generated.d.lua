@@ -20,6 +20,7 @@ local logic = {}
 ---@field should_close boolean
 ---@field test_field integer?
 ---@field test_field_2 number?
+---@field log Slice<string>
 ---@field private component_hash integer
 ---@field private metatable_name string
 ecs.game.GameActions = {}

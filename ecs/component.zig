@@ -38,6 +38,126 @@ pub fn LibComponent(comptime name_prefix: []const u8, comptime T: type) type {
     };
 }
 
+pub fn SliceProxy(comptime Slice: type) type {
+    const info = @typeInfo(Slice);
+    if (comptime info != .pointer and info.pointer.size != .slice) {
+        @compileError("Expected a slice");
+    }
+    const slice_info = @typeInfo(Slice).pointer;
+    const Element = slice_info.child;
+    return struct {
+        const MetaTableName = "SliceProxy(" ++ @typeName(Element) ++ ").MetaTable";
+        const Self = @This();
+        slice: *Slice,
+        allocator: std.mem.Allocator,
+
+        pub fn luaPush(slice: *Slice, allocator: std.mem.Allocator, state: *clua.lua_State) void {
+            std.debug.print("Pushing the proxy {s} of size {d} full proxy name {s}\n", .{ @typeName(Slice), @sizeOf(Self), @typeName(Self) });
+            const allocated = clua.lua_newuserdata(state, @sizeOf(Self)) orelse @panic("lua could not allocate");
+            const self = @as(*Self, @alignCast(@ptrCast(allocated)));
+            std.debug.print("Got address {d}\n", .{@intFromPtr(self)});
+            self.* = Self{ .slice = slice, .allocator = allocator };
+            if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
+                clua.lua_pop(state, 1);
+                createMetaTableAndPush(state);
+            }
+            if (clua.lua_setmetatable(state, -2) != 0) {}
+            if (clua.lua_type(state, -1) != clua.LUA_TUSERDATA) {
+                std.debug.panic("Not user data byt why? {}\n", .{clua.lua_type(state, -1)});
+            }
+        }
+
+        pub fn newIndex(state: *clua.lua_State) callconv(.c) c_int {
+            std.debug.print("Calling new index the stack size is {}\n", .{clua.lua_gettop(state)});
+            if (clua.lua_type(state, 1) != clua.LUA_TUSERDATA) {
+                std.debug.print("bottom is not userdata 1 {}\n", .{clua.lua_type(state, 1)});
+            } else {
+                std.debug.print("bottom is userdata\n", .{});
+            }
+            const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
+            if (clua.lua_type(state, 2) != clua.LUA_TNUMBER) {
+                @panic("expected array index to be integer");
+            }
+            const lua_index = clua.lua_tointegerx(state, 2, null);
+            const value = luaReadValue(state, Element, 3, self.allocator) catch |err| {
+                std.debug.panic("Could not read lua value {}", .{err});
+            };
+            const index = lua_index - 1;
+            if (index < self.slice.len) {
+                self.slice.*[@intCast(lua_index)] = value;
+                return 0;
+            }
+            // we need to reallocate
+            const new_mem = self.allocator.alloc(Element, @intCast(lua_index)) catch @panic("could not allocate");
+            @memcpy(new_mem[0..self.slice.len], self.slice.*);
+            self.allocator.free(self.slice.*);
+            self.slice.* = new_mem;
+            self.slice.*[@intCast(index)] = value;
+            return 0;
+        }
+
+        pub fn slice_length(state: *clua.lua_State) callconv(.c) c_int {
+            std.debug.print("Calling slice length\n", .{});
+            const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
+            clua.lua_pushinteger(state, @intCast(self.slice.len));
+            return 1;
+        }
+
+        pub fn to_table(state: *clua.lua_State) callconv(.c) c_int {
+            const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
+            clua.lua_newtable(state);
+            for (0..self.slice.len) |index| {
+                luaPushValue(Element, state, &self.slice.*[@intCast(index)], self.allocator) catch @panic("could not push the value");
+                clua.lua_seti(state, 2, @intCast(index + 1));
+            }
+            return 1;
+        }
+
+        pub fn getIndex(state: *clua.lua_State) callconv(.c) c_int {
+            const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
+            if (clua.lua_type(state, 2) == clua.LUA_TNUMBER) {
+                const lua_index = clua.lua_tointegerx(state, 2, null);
+                const index = lua_index - 1;
+                if (index >= self.slice.len) {
+                    clua.lua_pushnil(state);
+                } else {
+                    luaPushValue(Element, state, &self.slice.*[@intCast(index)], self.allocator) catch {
+                        @panic("ojoj");
+                    };
+                }
+                return 1;
+            }
+            clua.lua_pushvalue(state, 2); // push key
+            _ = clua.lua_gettable(state, clua.lua_upvalueindex(1)); // lookup in methods table
+            return 1; // return whatever was found (nil if not found)
+        }
+
+        const methods = [_]clua.luaL_Reg{
+            .{ .name = "length", .func = @ptrCast(&slice_length) },
+            .{ .name = "totable", .func = @ptrCast(&to_table) },
+            .{ .name = null, .func = null },
+        };
+
+        pub fn createMetaTableAndPush(state: *clua.lua_State) void {
+            if (clua.luaL_newmetatable(state, MetaTableName) == 0) {
+                return;
+            }
+
+            clua.lua_newtable(state);
+            clua.luaL_setfuncs(state, &methods[0], 0);
+
+            clua.lua_pushcclosure(state, @ptrCast(&getIndex), 1);
+            clua.lua_setfield(state, -2, "__index");
+
+            clua.lua_pushcclosure(state, @ptrCast(&newIndex), 0);
+            clua.lua_setfield(state, -2, "__newindex");
+
+            clua.lua_pushcclosure(state, @ptrCast(&slice_length), 0);
+            clua.lua_setfield(state, -2, "__len");
+        }
+    };
+}
+
 /// Ignore fields has to be a tuple of strings
 pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
     return struct {
@@ -104,7 +224,13 @@ pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
             inline for (fields) |f| {
                 const asSlice = std.mem.sliceTo(luaField, 0);
                 if (isLuaSupported(f.type) and std.mem.eql(u8, f.name, asSlice) and !isIgnoredField(f.name)) {
-                    luaPushValue(state, @field(ptr, f.name)) catch {
+                    const allocator: ?std.mem.Allocator = if (comptime @hasField(T, "allocator")) ptr.allocator else null;
+                    luaPushValue(
+                        f.type,
+                        state,
+                        &@field(ptr, f.name),
+                        allocator,
+                    ) catch {
                         unreachable;
                     };
                 }
@@ -128,6 +254,9 @@ pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
                             @panic("cought error while reading lua value");
                         };
                         if (comptime @typeInfo(f.type) == .pointer) {
+                            // TODO: this has to be recusrive, like if elements of the slice need freeing
+                            // we should free them too. It could habe arbitrary level of nesting
+                            // like a list of stucts that have strings
                             ptr.allocator.free(@field(ptr, f.name));
                         }
                         @field(ptr, f.name) = val;
@@ -202,7 +331,9 @@ fn getLuaType(comptime T: type) []const u8 {
             if (ptr.child == u8) {
                 break :ret "string";
             } else {
-                break :ret "{ [integer]: " ++ getLuaType(ptr.child) ++ " }";
+                comptime {
+                    break :ret "Slice<" ++ getLuaType(ptr.child) ++ ">";
+                }
             }
         } else if (ptr.size == .c and ptr.child == u8) {
             break :ret "string";
@@ -270,7 +401,7 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
             const len = clua.lua_rawlen(state, index);
             const res = try allocator.?.alloc(ptr.child, len);
             for (0..len) |idx| {
-                clua.lua_geti(state, index, idx + 1);
+                _ = clua.lua_geti(state, index, @intCast(idx + 1));
                 const value = try luaReadValue(state, ptr.child, -1, allocator);
                 res[idx] = value;
             }
@@ -297,21 +428,24 @@ fn isLuaSupported(comptime t: type) bool {
     };
 }
 
-fn luaPushValue(state: *clua.lua_State, val: anytype) !void {
-    const info = @typeInfo(@TypeOf(val));
+fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Allocator) !void {
+    const info = @typeInfo(T);
     switch (info) {
         .bool => {
-            clua.lua_pushboolean(state, if (val) 1 else 0);
+            clua.lua_pushboolean(state, if (val.*) 1 else 0);
         },
         .int => {
-            clua.lua_pushinteger(state, @intCast(val));
+            clua.lua_pushinteger(state, @intCast(val.*));
         },
         .float => {
-            clua.lua_pushnumber(state, @floatCast(val));
+            clua.lua_pushnumber(state, @floatCast(val.*));
         },
-        .optional => {
-            if (val) |inner| {
-                try luaPushValue(state, inner);
+        .optional => |opt| {
+            if (val.*) |*inner| {
+                // as_ptr would be a pointer to opional which kinda doesn't work?
+                // we need pointer to a slice so we would need to transform *?[] into *[]
+                // but that seems impossible
+                try luaPushValue(opt.child, state, inner, allocator);
             } else {
                 clua.lua_pushnil(state);
             }
@@ -319,19 +453,16 @@ fn luaPushValue(state: *clua.lua_State, val: anytype) !void {
         .pointer => |ptr| if (ptr.size == .slice) {
             if (ptr.child == u8 and ptr.sentinel_ptr == null) {
                 // this is a string
-                _ = clua.lua_pushlstring(state, @ptrCast(val), val.len);
+                _ = clua.lua_pushlstring(state, @ptrCast(val.*), val.len);
             } else if (ptr.child == u8) {
                 // TODO: we assume sentinel pointer is null byte might be wrong assumption
-                _ = clua.lua_pushstring(state, @ptrCast(val));
+                _ = clua.lua_pushstring(state, @ptrCast(val.*));
             } else {
-                clua.lua_newtable(state);
-                for (val, 1..) |el, index| {
-                    try luaPushValue(state, el);
-                    clua.lua_seti(state, -2, index);
-                }
+                std.debug.print("Pushing slice proxy for type {s}\n", .{@typeName(T)});
+                SliceProxy(T).luaPush(val, allocator.?, state);
             }
         } else if (ptr.size == .c and ptr.child == u8) {
-            _ = clua.lua_pushstring(state, @ptrCast(val));
+            _ = clua.lua_pushstring(state, @ptrCast(val.*));
         } else {
             return error.unsupportedType;
         },
