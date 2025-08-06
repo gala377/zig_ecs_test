@@ -52,10 +52,10 @@ pub fn SliceProxy(comptime Slice: type) type {
         allocator: std.mem.Allocator,
 
         pub fn luaPush(slice: *Slice, allocator: std.mem.Allocator, state: *clua.lua_State) void {
-            std.debug.print("Pushing the proxy {s} of size {d} full proxy name {s}\n", .{ @typeName(Slice), @sizeOf(Self), @typeName(Self) });
+            // std.debug.print("Pushing the proxy {s} of size {d} full proxy name {s}\n", .{ @typeName(Slice), @sizeOf(Self), @typeName(Self) });
             const allocated = clua.lua_newuserdata(state, @sizeOf(Self)) orelse @panic("lua could not allocate");
             const self = @as(*Self, @alignCast(@ptrCast(allocated)));
-            std.debug.print("Got address {d}\n", .{@intFromPtr(self)});
+            // std.debug.print("Got address {d}\n", .{@intFromPtr(self)});
             self.* = Self{ .slice = slice, .allocator = allocator };
             if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
                 clua.lua_pop(state, 1);
@@ -68,12 +68,7 @@ pub fn SliceProxy(comptime Slice: type) type {
         }
 
         pub fn newIndex(state: *clua.lua_State) callconv(.c) c_int {
-            std.debug.print("Calling new index the stack size is {}\n", .{clua.lua_gettop(state)});
-            if (clua.lua_type(state, 1) != clua.LUA_TUSERDATA) {
-                std.debug.print("bottom is not userdata 1 {}\n", .{clua.lua_type(state, 1)});
-            } else {
-                std.debug.print("bottom is userdata\n", .{});
-            }
+            // std.debug.print("Calling new index the stack size is {}\n", .{clua.lua_gettop(state)});
             const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
             if (clua.lua_type(state, 2) != clua.LUA_TNUMBER) {
                 @panic("expected array index to be integer");
@@ -97,7 +92,7 @@ pub fn SliceProxy(comptime Slice: type) type {
         }
 
         pub fn slice_length(state: *clua.lua_State) callconv(.c) c_int {
-            std.debug.print("Calling slice length\n", .{});
+            // std.debug.print("Calling slice length\n", .{});
             const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
             clua.lua_pushinteger(state, @intCast(self.slice.len));
             return 1;
@@ -412,8 +407,8 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
         } else {
             return error.unsupportedType;
         },
-        else => |tag| {
-            std.debug.print("unsupported type {s} for field", .{@tagName(tag)});
+        else => {
+            // std.debug.print("unsupported type {s} for field", .{@tagName(tag)});
             return error.unsupportedType;
         },
     }
@@ -458,7 +453,7 @@ fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Al
                 // TODO: we assume sentinel pointer is null byte might be wrong assumption
                 _ = clua.lua_pushstring(state, @ptrCast(val.*));
             } else {
-                std.debug.print("Pushing slice proxy for type {s}\n", .{@typeName(T)});
+                // std.debug.print("Pushing slice proxy for type {s}\n", .{@typeName(T)});
                 SliceProxy(T).luaPush(val, allocator.?, state);
             }
         } else if (ptr.size == .c and ptr.child == u8) {
@@ -466,8 +461,8 @@ fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Al
         } else {
             return error.unsupportedType;
         },
-        else => |tag| {
-            std.debug.print("unsupported type {s} for field", .{@tagName(tag)});
+        else => {
+            // std.debug.print("unsupported type {s} for field", .{@tagName(tag)});
             return error.unsupportedType;
         },
     }

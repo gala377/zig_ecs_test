@@ -32,14 +32,12 @@ local function click_run(buttons, actions)
 			print("Got button click of " .. button.title)
 			local ga = query.single(actions)
 			---@cast ga GameActions
-			if ga.test_field == nil then
-				ga.test_field = 1
-			else
-				ga.test_field = ga.test_field + 1
-			end
+			ga.test_field = (ga.test_field or 0) + 1
 			print("clicked " .. tostring(ga.test_field) .. " times")
 			ga.log[#ga.log + 1] = button.title
-			print("click log: " .. table.concat(ga.log:totable(), ","))
+			for i, log in ipairs(ga.log) do
+				print("log " .. tostring(i) .. " " .. log)
+			end
 		end
 	end
 end
