@@ -42,6 +42,8 @@ can just simply be a map of []component_ids to pointers to entities.
 
 ### Exposing constructors to lua
 
+-- depends on: [[#Commands]] 
+
 Components have to be created, that means we have to expose
 a method like - fromLua for components.
 
@@ -62,6 +64,10 @@ just throw runtime error and it should be fine.
 
 ### Lua components
 
+-- depends on [#Commands] - without commands there is no way to create
+those components (well we could hack it with like, script setup function or something like this
+but you know)
+
 We can just hold them as refs, the problem is their identity.
 Meaning hash of them.
 We might provide some function like `component` in lua that generates
@@ -72,4 +78,7 @@ But we somehow need to get like a unique name for the component. Maybe UUID?
 Maybe there is some way to get them deterministically for later saving of
 a game state?
 
+### Control over system execution 
 
+Things like system groups or anything like that.
+Something that would allow us to define dependencies between systems.
