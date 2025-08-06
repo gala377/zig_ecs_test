@@ -36,7 +36,6 @@ local function click_run(buttons, actions)
 			print("clicked " .. tostring(ga.test_field) .. " times")
 			ga.log[#ga.log + 1] = button.title
 			for i, log in ipairs(ga.log) do
-				hello()
 				print("log " .. tostring(i) .. " " .. log)
 			end
 		end
