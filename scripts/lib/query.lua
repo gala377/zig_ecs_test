@@ -38,18 +38,18 @@ end
 --- [9]?: T9,
 --- [10]?: T10,
 ---}>
----@return boolean success, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10
+---@return T1?, T2, T3, T4, T5, T6, T7, T8, T9, T10
 function module.single(iterator)
 	---@diagnostic disable: missing-return-value
 	local res = iterator:next()
 	if res == nil then
-		return false, nil
+		return nil
 	end
 	local next = iterator:next()
 	if next ~= nil then
-		return false, nil
+		return nil
 	end
-	return true, table.unpack(res)
+	return table.unpack(res)
 	---@diagnostic enable: missing-return-value
 end
 

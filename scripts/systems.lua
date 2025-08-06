@@ -14,9 +14,11 @@ local query = require("scripts.lib.query")
 ---@param button Query<[Button, ButtonClose]>
 ---@param actions Query<[GameActions]>
 local function close_run(button, actions)
-	local _, close_button, _ = query.single(button)
+	local close_button, _ = query.single(button)
+	---@cast close_button Button
 	if close_button.clicked then
-		local _, game_actions = query.single(actions)
+		local game_actions = query.single(actions)
+		---@cast game_actions GameActions
 		game_actions.should_close = true
 	end
 end
@@ -28,8 +30,8 @@ local function click_run(buttons, actions)
 		---@cast button Button
 		if button.clicked then
 			print("Got button click of " .. button.title)
-			---@type boolean, GameActions
-			local _, ga = query.single(actions)
+			local ga = query.single(actions)
+			---@cast ga GameActions
 			if ga.test_field == nil then
 				ga.test_field = 1
 			else
@@ -42,7 +44,7 @@ end
 
 local called = 1
 local function change_title(buttons)
-	local _, button, _ = query.single(buttons)
+	local button, _ = query.single(buttons)
 	---@cast button Button
 	if button.clicked then
 		button.title = "Clicked " .. tostring(called) .. " times"
