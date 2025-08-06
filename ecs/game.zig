@@ -211,8 +211,10 @@ pub const Game = struct {
 
 pub const GameActions = struct {
     pub usingnamespace Component(component_prefix, GameActions);
-    pub usingnamespace ExportLua(GameActions);
+    pub usingnamespace ExportLua(GameActions, .{});
     should_close: bool,
+    test_field: ?isize = null,
+    test_field_2: ?f64 = null,
 };
 
 pub const LuaRuntime = struct {

@@ -16,7 +16,6 @@ local function run(buttons, game_actions)
 			---@type boolean, GameActions
 			local ok, actions = query.single(game_actions)
 			if not ok then
-				print("Expected exactly one game action got nothing")
 				return
 			end
 			actions.should_close = true

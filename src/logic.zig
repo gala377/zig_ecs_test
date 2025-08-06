@@ -73,12 +73,12 @@ pub fn installMainLogic(game: *Game) !void {
 
 pub const ButtonOpen = struct {
     pub usingnamespace Component(ButtonOpen);
-    pub usingnamespace ExportLua(ButtonOpen);
+    pub usingnamespace ExportLua(ButtonOpen, .{});
 };
 
 pub const ButtonClose = struct {
     pub usingnamespace Component(ButtonClose);
-    pub usingnamespace ExportLua(ButtonClose);
+    pub usingnamespace ExportLua(ButtonClose, .{});
 };
 
 const ButtonLua = struct {

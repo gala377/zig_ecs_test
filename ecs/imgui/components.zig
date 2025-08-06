@@ -7,7 +7,9 @@ const component_prefix = @import("build_options").components_prefix;
 
 pub const Button = struct {
     pub usingnamespace Component(component_prefix, Button);
-    pub usingnamespace ExportLua(Button);
+    pub usingnamespace ExportLua(Button, .{
+        "pos", "size", "title",
+    });
 
     pos: Vec2,
     size: Vec2,
