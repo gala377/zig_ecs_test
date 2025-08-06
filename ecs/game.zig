@@ -157,7 +157,7 @@ pub const Game = struct {
         defer file.close();
         const contents = try file.readToEndAlloc(self.allocator, std.math.maxInt(usize));
         defer self.allocator.free(contents);
-        try self.lua_state.load(contents);
+        try self.lua_state.loadWithName(contents, path);
         const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
         try self.lua_systems.append(system);
     }
@@ -169,7 +169,7 @@ pub const Game = struct {
         defer file.close();
         const contents = try file.readToEndAlloc(self.allocator, std.math.maxInt(usize));
         defer self.allocator.free(contents);
-        try self.lua_state.load(contents);
+        try self.lua_state.loadWithName(contents, path);
         if (clua.lua_type(self.lua_state.state, -1) != clua.LUA_TTABLE) {
             return error.expectedTable;
         }

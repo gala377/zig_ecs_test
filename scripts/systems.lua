@@ -36,6 +36,7 @@ local function click_run(buttons, actions)
 			print("clicked " .. tostring(ga.test_field) .. " times")
 			ga.log[#ga.log + 1] = button.title
 			for i, log in ipairs(ga.log) do
+				hello()
 				print("log " .. tostring(i) .. " " .. log)
 			end
 		end
@@ -53,7 +54,7 @@ local function change_title(buttons)
 end
 
 return {
-	system.new(click_run):query(Button):query(GameActions),
-	system.new(close_run):query(Button, ButtonClose):query(GameActions),
-	system.new(change_title):query(Button, ButtonOpen),
+	system.new(click_run, "click logger"):query(Button):query(GameActions),
+	system.new(close_run, "close on click"):query(Button, ButtonClose):query(GameActions),
+	system.new(change_title, "change button title"):query(Button, ButtonOpen),
 }

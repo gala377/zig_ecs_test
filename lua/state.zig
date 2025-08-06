@@ -105,12 +105,18 @@ pub const LuaState = struct {
     /// this is useful when trying to create a reference to value returned by the
     /// chunk.
     pub fn load(self: Self, code: []const u8) !void {
+        return self.loadWithName(code, "exec");
+    }
+
+    pub fn loadWithName(self: Self, code: []const u8, name: []const u8) !void {
         var reader = ReaderCtx{ .data = code, .last_read = 0 };
+        const chunkname = try self.context.allocator.dupeZ(u8, name);
+        defer self.context.allocator.free(chunkname);
         try errorFromInt(lua.lua_load(
             self.state,
             @ptrCast(&sliceReader),
             @ptrCast(&reader),
-            "exec",
+            @ptrCast(chunkname),
             null,
         ));
         luaCall(self.state, 0, 1);

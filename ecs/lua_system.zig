@@ -14,6 +14,7 @@ components: [][]const ComponentId,
 system: lua.Ref,
 allocator: std.mem.Allocator,
 iters_allocator: std.heap.ArenaAllocator,
+name: []const u8,
 
 scopes: []DynamicScope,
 iters: []DynamicQuery,
@@ -29,6 +30,7 @@ pub fn fromLua(state: lua.State, allocator: std.mem.Allocator) !Self {
         .iters_allocator = iter_allocator,
         .scopes = try allocator.alloc(DynamicScope, from_lua.components.len),
         .iters = try allocator.alloc(DynamicQuery, from_lua.components.len),
+        .name = from_lua.system_name,
     };
 }
 
@@ -41,16 +43,34 @@ pub const LuaSystemErrors = error{
     stackEmpty,
 };
 
-fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSystemErrors!struct { system: lua.Ref, components: [][]ComponentId } {
+fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSystemErrors!struct { system: lua.Ref, components: [][]ComponentId, system_name: []const u8 } {
     const startStackSize = state.stackSize();
     std.debug.assert(startStackSize > 0);
     if (lua.clib.lua_type(state.state, -1) != lua.clib.LUA_TTABLE) {
         return LuaSystemErrors.expectedTable;
     }
+    // get callback
     if (lua.clib.lua_getfield(state.state, -1, "callback") != lua.clib.LUA_TFUNCTION) {
         return LuaSystemErrors.expectedFunction;
     }
     const system = state.makeRef() catch return LuaSystemErrors.unableToMakeCallback;
+
+    const name_t = lua.clib.lua_getfield(state.state, -1, "name");
+    const sys_name: []const u8 = ret: {
+        if (name_t != lua.clib.LUA_TSTRING) {
+            state.pop() catch return LuaSystemErrors.stackEmpty;
+            break :ret &.{};
+        } else {
+            var len: usize = undefined;
+            const str = lua.clib.lua_tolstring(state.state, -1, &len);
+            const name = allocator.alloc(u8, len) catch return LuaSystemErrors.outOfMemory;
+            @memcpy(name, str[0..len]);
+            state.pop() catch return LuaSystemErrors.stackEmpty;
+            break :ret name;
+        }
+    };
+
+    // get queries
     if (lua.clib.lua_getfield(state.state, -1, "queries") != lua.clib.LUA_TTABLE) {
         return LuaSystemErrors.expectedTable;
     }
@@ -95,6 +115,7 @@ fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSyst
     return .{
         .system = system,
         .components = components,
+        .system_name = sys_name,
     };
 }
 
@@ -105,11 +126,27 @@ pub fn run(self: *Self, game: *Game, state: lua.State) !void {
     for (self.scopes, 0..) |*s, i| {
         self.iters[i] = s.iter();
     }
+    // install error handler
+    _ = lua.clib.lua_getglobal(state.state, "debug");
+    _ = lua.clib.lua_getfield(state.state, -1, "traceback"); // push debug.traceback
+    const errfuncIndex = lua.clib.lua_gettop(state.state);
+
     state.pushRef(self.system);
     for (self.iters) |*iter| {
         iter.luaPush(state.state);
     }
-    lua.clib.lua_callk(state.state, @intCast(self.iters.len), 0, 0, null);
+    // safe call
+    const call_res = lua.clib.lua_pcallk(state.state, @as(c_int, @intCast(self.iters.len)), 0, errfuncIndex, 0, null);
+    // unsafe call, probably should allow in release
+    //lua.clib.lua_callk(state.state, @intCast(self.iters.len), 0, 0, null);
+    if (call_res != lua.clib.LUA_OK) {
+        const errMsg = lua.clib.lua_tolstring(state.state, -1, null);
+        std.debug.print("ERROR[{s}] - Lua Error:\n{s}\n", .{ self.name, errMsg });
+        try state.pop();
+    }
+    // pop error handler
+    try state.pop();
+
     if (!self.iters_allocator.reset(.retain_capacity)) {
         return error.couldNotRestAllocator;
     }
@@ -124,4 +161,7 @@ pub fn deinit(self: *Self) void {
     self.allocator.free(self.scopes);
     self.allocator.free(self.iters);
     self.iters_allocator.deinit();
+    if (self.name.len > 0) {
+        self.allocator.free(self.name);
+    }
 }

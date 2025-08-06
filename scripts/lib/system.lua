@@ -1,13 +1,17 @@
 local system = {}
 
 ---@param func function
-function system.new(func)
+---@param name? string
+---@return SystemBuilder
+function system.new(func, name)
 	---@class SystemBuilder
 	---@field queries CompSelector[][]
 	---@field callback function?
+	---@field name string?
 	local SystemBuilder = {
 		queries = {},
 		callback = func,
+		name = name,
 	}
 	function SystemBuilder:query(...)
 		local toTable = { ... }
