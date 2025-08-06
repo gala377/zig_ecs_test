@@ -67,8 +67,7 @@ pub fn installMainLogic(game: *Game) !void {
         },
     });
 
-    try game.addLuaSystem("scripts/test_system.lua");
-    try game.addLuaSystem("scripts/close_on_click.lua");
+    try game.addLuaSystems("scripts/systems.lua");
 }
 
 pub const ButtonOpen = struct {
