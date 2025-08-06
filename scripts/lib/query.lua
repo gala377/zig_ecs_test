@@ -13,7 +13,7 @@ local module = {}
 --- [9]?: T9,
 --- [10]?: T10,
 ---}>
----@return fun(): (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)|nil
+---@return fun(): T1?, T2, T3, T4, T5, T6, T7, T8, T9, T10
 function module.iter(iterator)
 	return function()
 		local next = iterator:next()
