@@ -65,7 +65,7 @@ pub fn makeEntity(self: *Self, id: usize, components: anytype) !void {
     }
 }
 
-fn findOrCreateArchetype(self: *Self, ids: []ComponentId) !*ArchetypeStorage {
+pub fn findOrCreateArchetype(self: *Self, ids: []ComponentId) !*ArchetypeStorage {
     std.sort.heap(ComponentId, ids, {}, std.sort.asc(ComponentId));
     if (self.findExactArchetypeProvidedSorted(assertSorted(ComponentId, ids))) |ptr| {
         return ptr;

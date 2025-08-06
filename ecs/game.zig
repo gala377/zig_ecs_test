@@ -7,15 +7,17 @@ const rg = @import("raygui");
 const rl = @import("raylib");
 
 const commands = @import("commands.zig");
-const component_mod = @import("component.zig");
 const Component = @import("component.zig").LibComponent;
+const component_mod = @import("component.zig");
 const ComponentId = @import("component.zig").ComponentId;
+const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
 const DeclarationGenerator = @import("declaration_generator.zig");
 const DynamicQueryIter = @import("dynamic_query.zig").DynamicQueryIter;
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 const DynamicScopeOptions = @import("entity_storage.zig").DynamicScopeOptions;
 const EntityId = @import("scene.zig").EntityId;
 const EntityStorage = @import("entity_storage.zig");
+const Entity = @import("entity.zig");
 const ExportLua = @import("component.zig").ExportLua;
 const LuaAccessibleOpaqueComponent = @import("dynamic_query.zig").LuaAccessibleOpaqueComponent;
 const LuaSystem = @import("lua_system.zig");
@@ -192,6 +194,47 @@ pub const Game = struct {
         const id = self.newId();
         try self.global_entity_storage.makeEntity(id, components);
         return .{ .scene_id = 0, .entity_id = id };
+    }
+
+    pub fn insertEntity(self: *Self, id: EntityId, components: []ComponentWrapper) !void {
+        const component_ids = try self.allocator.alloc(ComponentId, components.len);
+        defer self.allocator.free(component_ids);
+        for (components, 0..) |c, idx| {
+            component_ids[idx] = c.component_id;
+        }
+        if (id.scene_id == 0) {
+            // global entity
+            const archetype = try self.global_entity_storage.findOrCreateArchetype(component_ids);
+            if (archetype.entities.contains(id.entity_id)) {
+                return error.entityAlreadyExists;
+            }
+            const wrappers = std.AutoHashMap(ComponentId, ComponentWrapper).init(self.allocator);
+            for (components) |c| {
+                try wrappers.put(c.component_id, c);
+            }
+            const entity = Entity{
+                .id = id.entity_id,
+                .components = wrappers,
+            };
+            try archetype.entities.put(id.entity_id, entity);
+        } else if (self.current_scene) |scene| {
+            if (scene.id != id.scene_id) {
+                return error.sceneDoesNotExist;
+            }
+            const archetype = try scene.entity_storage.findOrCreateArchetype(component_ids);
+            if (archetype.entities.contains(id.entity_id)) {
+                return error.entityAlreadyExists;
+            }
+            const wrappers = std.AutoHashMap(ComponentId, ComponentWrapper).init(scene.scene_allocator);
+            for (components) |c| {
+                try wrappers.put(c.component_id, c);
+            }
+            const entity = Entity{
+                .id = id.entity_id,
+                .components = wrappers,
+            };
+            try archetype.entities.put(id.entity_id, entity);
+        }
     }
 
     pub fn setInitialScene(self: *Self, scene: Scene) !void {

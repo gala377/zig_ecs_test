@@ -26,6 +26,9 @@ For now the last 2 types that are exposable are structs and pointers to one elem
 We could also try later to do enums and even later tagged unions but for now
 we don't plan on supporting those.
 
+Also StringHashMap and ArrayList would be useful, array list should be kinda easy
+except how to identify it but other than that it is doable.
+
 ### Better components storage
 
 Because we hold entities as archetypes we can hold components
