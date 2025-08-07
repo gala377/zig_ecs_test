@@ -13,15 +13,19 @@ const Vec2 = ecs.utils.Vec2;
 const lua = @import("lua_lib");
 const Resource = ecs.Resource;
 const ExportLua = ecs.component.ExportLua;
+const scene = ecs.scene;
+const Commands = ecs.Commands;
 
 pub fn installMainLogic(game: *Game) !void {
     try game.addSystems(.{
         system(print_on_button),
-        //system(close_on_button),
         system(call_ref),
+        system(spawn_on_click),
+        system(read_new_entities),
     });
     game.exportComponent(ButtonOpen);
     game.exportComponent(ButtonClose);
+    try game.addLuaSystems("scripts/systems.lua");
 
     const ref = try game.luaLoad(
         \\ return function(button)
@@ -35,6 +39,7 @@ pub fn installMainLogic(game: *Game) !void {
     const open_title: [:0]u8 = try game.allocator.dupeZ(u8, "Open");
     const close_title: [:0]u8 = try game.allocator.dupeZ(u8, "Close");
     const lua_title: [:0]u8 = try game.allocator.dupeZ(u8, "Lua Callback");
+    const spawn_title: [:0]u8 = try game.allocator.dupeZ(u8, "Spawn Title");
 
     const buttons_size = Vec2{ .x = 100.0, .y = 25.0 };
     const position = Vec2{ .x = 50.0, .y = 50.0 };
@@ -70,8 +75,55 @@ pub fn installMainLogic(game: *Game) !void {
         },
     });
 
-    try game.addLuaSystems("scripts/systems.lua");
+    _ = try game.newGlobalEntity(.{
+        imgui.components.Button{
+            .pos = position.add_y(buttons_size.y * 3),
+            .size = buttons_size,
+            .title = @ptrCast(spawn_title),
+            .allocator = game.allocator,
+        },
+        ButtonSpawn{},
+    });
 }
+
+pub const TestItem = struct {
+    pub usingnamespace Component(TestItem);
+
+    index: usize,
+    already_logged: bool = false,
+};
+
+pub fn spawn_on_click(commands: Commands, buttons: *Query(.{ Button, ButtonSpawn }), entities: *Query(.{TestItem})) void {
+    const button: *Button, _ = buttons.single();
+    const cmd: *ecs.commands = commands.get();
+    if (button.clicked) {
+        var max: usize = 0;
+        while (entities.next()) |ent| {
+            const test_item: *TestItem = ent[0];
+            if (test_item.index > max) {
+                max = test_item.index;
+            }
+        }
+        const next_index = max + 1;
+        cmd.newSceneEntity(.{TestItem{
+            .index = next_index,
+        }}) catch @panic("could not make new scene entity");
+    }
+}
+
+pub fn read_new_entities(entities: *Query(.{TestItem})) void {
+    while (entities.next()) |e| {
+        var entity: *TestItem = e[0];
+        if (!entity.already_logged) {
+            entity.already_logged = true;
+            std.debug.print("Saw new entity {}\n", .{entity.index});
+        }
+    }
+}
+
+pub const ButtonSpawn = struct {
+    pub usingnamespace Component(ButtonSpawn);
+};
 
 pub const ButtonOpen = struct {
     pub usingnamespace Component(ButtonOpen);

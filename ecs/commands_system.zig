@@ -1,12 +1,15 @@
 const Query = @import("entity_storage.zig").QueryIter;
 const Resource = @import("resource.zig").Resource;
-const Commands = @import("commands.zig");
+const commands = @import("commands.zig");
 const Game = @import("game.zig").Game;
 
-pub fn create_entities(game: *Game) void {
-    const commands_res = game.getResource(Commands);
-    const commands = commands_res.get();
-    for (commands.entities.items) |entity| {
-        _ = entity;
+pub fn create_entities(commands_res: commands.Commands) void {
+    const cmd: *commands = commands_res.get();
+    for (cmd.entities.items) |entity| {
+        cmd.game.insertEntity(entity.id, entity.components) catch {
+            @panic("inserting entity failed");
+        };
     }
+    // game took ownership of components map we can clear all of entities
+    cmd.entities.clearRetainingCapacity();
 }

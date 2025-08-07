@@ -65,7 +65,30 @@ pub fn makeEntity(self: *Self, id: usize, components: anytype) !void {
     }
 }
 
-pub fn findOrCreateArchetype(self: *Self, ids: []ComponentId) !*ArchetypeStorage {
+pub fn insertEntity(self: *Self, id: usize, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
+    std.debug.print("Inserting entity\n", .{});
+    var component_ids = try self.allocator.alloc(ComponentId, components.count());
+    defer self.allocator.free(component_ids);
+    var keys = components.keyIterator();
+    var idx: usize = 0;
+    while (keys.next()) |cid| {
+        component_ids[idx] = cid.*;
+        idx += 1;
+    }
+    std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
+    // global entity
+    const archetype = try self.findOrCreateArchetype(component_ids);
+    if (archetype.entities.contains(id)) {
+        return error.entityAlreadyExists;
+    }
+    const entity = Entity{
+        .id = id,
+        .components = components,
+    };
+    try archetype.entities.put(id, entity);
+}
+
+fn findOrCreateArchetype(self: *Self, ids: []ComponentId) !*ArchetypeStorage {
     std.sort.heap(ComponentId, ids, {}, std.sort.asc(ComponentId));
     if (self.findExactArchetypeProvidedSorted(assertSorted(ComponentId, ids))) |ptr| {
         return ptr;
@@ -228,7 +251,7 @@ fn findSubsetArchetypeProvidedSorted(self: *Self, ids: Sorted([]ComponentId)) ?*
     return null;
 }
 
-fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
+pub fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
     const Component = @TypeOf(comp);
     // if (comptime !std.meta.fieldNames(Component, "is_component_marker")) {
     //     const msg = "Type " ++ @typeName(Component) ++ " is not a component. Add `pub usingnamespace Component(" ++ @typeName(Component) ++ ")`.";

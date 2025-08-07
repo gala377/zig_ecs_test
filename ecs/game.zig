@@ -26,6 +26,8 @@ const PtrTuple = @import("utils.zig").PtrTuple;
 const Resource = @import("resource.zig").Resource;
 const Scene = @import("scene.zig").Scene;
 const utils = @import("utils.zig");
+const mksystem = @import("system.zig").system;
+const commands_system = @import("commands_system.zig");
 
 pub const Size = struct {
     width: i32,
@@ -68,6 +70,7 @@ pub const Game = struct {
 
     inner_id: usize,
     systems: std.ArrayList(System),
+    deffered_systems: std.ArrayList(System),
     lua_systems: std.ArrayList(LuaSystem),
     global_entity_storage: EntityStorage,
 
@@ -80,6 +83,7 @@ pub const Game = struct {
             .options = options,
             .inner_id = 1,
             .systems = .init(allocator),
+            .deffered_systems = .init(allocator),
             .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator),
             .lua_systems = .init(allocator),
@@ -87,6 +91,8 @@ pub const Game = struct {
     }
 
     pub fn run(self: *Self) !void {
+        try self.installRuntime();
+
         rl.setConfigFlags(.{ .window_highdpi = true });
         rl.setTargetFPS(self.options.window.targetFps);
         rl.initWindow(self.options.window.size.width, self.options.window.size.height, self.options.window.title);
@@ -103,10 +109,18 @@ pub const Game = struct {
                     @panic("could not run lua system");
                 };
             }
+            for (self.deffered_systems.items) |sys| {
+                sys(self);
+            }
 
             rl.clearBackground(.black);
             rl.endDrawing();
         }
+    }
+
+    fn installRuntime(self: *Self) !void {
+        try self.addResource(commands.init(self, self.allocator));
+        try self.addDefferedSystem(mksystem(commands_system.create_entities));
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
@@ -150,6 +164,10 @@ pub const Game = struct {
 
     pub fn addSystem(self: *Self, system: System) !void {
         try self.systems.append(system);
+    }
+
+    pub fn addDefferedSystem(self: *Self, system: System) !void {
+        try self.deffered_systems.append(system);
     }
 
     pub fn addLuaSystem(self: *Self, path: []const u8) !void {
@@ -196,44 +214,19 @@ pub const Game = struct {
         return .{ .scene_id = 0, .entity_id = id };
     }
 
-    pub fn insertEntity(self: *Self, id: EntityId, components: []ComponentWrapper) !void {
-        const component_ids = try self.allocator.alloc(ComponentId, components.len);
-        defer self.allocator.free(component_ids);
-        for (components, 0..) |c, idx| {
-            component_ids[idx] = c.component_id;
-        }
+    pub fn insertEntity(self: *Self, id: EntityId, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
         if (id.scene_id == 0) {
-            // global entity
-            const archetype = try self.global_entity_storage.findOrCreateArchetype(component_ids);
-            if (archetype.entities.contains(id.entity_id)) {
-                return error.entityAlreadyExists;
-            }
-            const wrappers = std.AutoHashMap(ComponentId, ComponentWrapper).init(self.allocator);
-            for (components) |c| {
-                try wrappers.put(c.component_id, c);
-            }
-            const entity = Entity{
-                .id = id.entity_id,
-                .components = wrappers,
-            };
-            try archetype.entities.put(id.entity_id, entity);
-        } else if (self.current_scene) |scene| {
-            if (scene.id != id.scene_id) {
+            try self.global_entity_storage.insertEntity(id.entity_id, components);
+        } else if (self.current_scene) |*scene| {
+            if (scene.id == id.scene_id) {
+                try scene.entity_storage.insertEntity(id.entity_id, components);
+            } else {
                 return error.sceneDoesNotExist;
             }
-            const archetype = try scene.entity_storage.findOrCreateArchetype(component_ids);
-            if (archetype.entities.contains(id.entity_id)) {
-                return error.entityAlreadyExists;
-            }
-            const wrappers = std.AutoHashMap(ComponentId, ComponentWrapper).init(scene.scene_allocator);
-            for (components) |c| {
-                try wrappers.put(c.component_id, c);
-            }
-            const entity = Entity{
-                .id = id.entity_id,
-                .components = wrappers,
-            };
-            try archetype.entities.put(id.entity_id, entity);
+        } else {
+            // TODO: Later, maybe look through other scenes, if we will allow for
+            // storing scenes for later use
+            return error.sceneDoesNotExist;
         }
     }
 
@@ -247,6 +240,7 @@ pub const Game = struct {
 
     pub fn deinit(self: *Self) void {
         self.systems.deinit();
+        self.deffered_systems.deinit();
         if (self.current_scene) |*scene| {
             scene.deinit();
         }

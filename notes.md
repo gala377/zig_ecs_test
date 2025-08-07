@@ -6,6 +6,7 @@
 - Writing systems in lua
 - Hash is stored as integers in lua
 - exposing a lot of fields to lua
+- wrapper for slices 
 
 ## What next
 

@@ -19,3 +19,5 @@ pub const utils = @import("utils.zig");
 
 pub const DeclarationGenerator = @import("declaration_generator.zig");
 pub const Resource = @import("resource.zig").Resource;
+pub const Commands = @import("commands.zig").Commands;
+pub const commands = @import("commands.zig");
