@@ -34,15 +34,12 @@ local function click_run(buttons, actions)
 			---@cast ga GameActions
 			ga.test_field = (ga.test_field or 0) + 1
 			print("clicked " .. tostring(ga.test_field) .. " times")
-			ga.log[#ga.log + 1] = button.title
-			for i, log in ipairs(ga.log) do
-				print("log " .. tostring(i) .. " " .. log)
-			end
 		end
 	end
 end
 
 local called = 1
+---@param buttons Query<[Button, logic.ButtonOpen]>
 local function change_title(buttons)
 	local button, _ = query.single(buttons)
 	---@cast button Button
