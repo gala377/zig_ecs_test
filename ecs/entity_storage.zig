@@ -140,9 +140,8 @@ pub fn QueryIter(comptime Components: anytype) type {
         }
 
         pub fn next(self: *Iter) ?PtrTuple(Components) {
-            if (self.current_entity_iterator) |it| {
-                var itt: std.AutoHashMap(usize, Entity).ValueIterator = it;
-                if (itt.next()) |entity| {
+            if (self.current_entity_iterator) |*it| {
+                if (it.next()) |entity| {
                     return getComponentsFromEntity(entity);
                 }
                 // iterator ended

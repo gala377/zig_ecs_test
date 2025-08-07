@@ -77,9 +77,8 @@ pub const DynamicQueryIter = struct {
     allocator: std.mem.Allocator,
 
     pub fn next(self: *Self) ?[]LuaAccessibleOpaqueComponent {
-        if (self.current_entity_iterator) |it| {
-            var itt: std.AutoHashMap(usize, Entity).ValueIterator = it;
-            if (itt.next()) |entity| {
+        if (self.current_entity_iterator) |*it| {
+            if (it.next()) |entity| {
                 return self.getComponentsFromEntity(entity);
             }
             // iterator ended
@@ -99,7 +98,7 @@ pub const DynamicQueryIter = struct {
                 .entities
                 .valueIterator();
             if (self.current_entity_iterator.?.next()) |entity| {
-                // after out value iterator runs out we have to check next arcehtypr
+                // after out value iterator runs out we have to check next arcehtype
                 self.next_archetype += 1;
                 return self.getComponentsFromEntity(entity);
             }
