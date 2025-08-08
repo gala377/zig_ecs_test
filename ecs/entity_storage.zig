@@ -7,6 +7,7 @@ const assertSorted = @import("utils.zig").assertSorted;
 const utils = @import("utils.zig");
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 const clua = @import("lua_lib").clib;
+const builtin = @import("builtin");
 
 pub const ComponentDeinit = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentFree = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
@@ -31,7 +32,13 @@ pub const ArchetypeStorage = struct {
 
 archetypes: std.ArrayList(ArchetypeStorage),
 components_per_archetype: std.ArrayList(Sorted([]const ComponentId)),
+queries_hash: std.AutoHashMap(u64, std.ArrayList(CacheEntry)),
 allocator: std.mem.Allocator,
+
+const CacheEntry = struct {
+    components: []const ComponentId,
+    archetypes: []const usize,
+};
 
 const Self = @This();
 
@@ -40,6 +47,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .archetypes = .init(allocator),
         .components_per_archetype = .init(allocator),
         .allocator = allocator,
+        .queries_hash = .init(allocator),
     };
 }
 
@@ -131,11 +139,13 @@ pub fn QueryIter(comptime Components: anytype) type {
         storage: *Storage,
         next_archetype: usize = 0,
         current_entity_iterator: ?std.AutoHashMap(usize, Entity).ValueIterator = null,
+        cache: []const usize,
 
-        pub fn init(storage: *Storage, component_ids: [Len]ComponentId) Iter {
+        pub fn init(storage: *Storage, component_ids: [Len]ComponentId, cache: []const usize) Iter {
             return .{
                 .component_ids = component_ids,
                 .storage = storage,
+                .cache = cache,
             };
         }
 
@@ -147,6 +157,34 @@ pub fn QueryIter(comptime Components: anytype) type {
                 // iterator ended
                 self.current_entity_iterator = null;
             }
+            // if (self.cache) |cache| {
+            return self.lookupCached(self.cache);
+            // }
+            // return self.lookupUncached();
+        }
+
+        fn lookupCached(self: *Iter, cache: []const usize) ?PtrTuple(Components) {
+            while (self.next_archetype < cache.len) {
+                const archetype_index = cache[self.next_archetype];
+                self.current_entity_iterator = self
+                    .storage
+                    .archetypes
+                    .items[archetype_index]
+                    .entities
+                    .valueIterator();
+                if (self.current_entity_iterator.?.next()) |entity| {
+                    // after out value iterator runs out we have to check next arcehtypr
+                    self.next_archetype += 1;
+                    return getComponentsFromEntity(entity);
+                }
+                // no entities in the iterator
+                self.current_entity_iterator = null;
+                self.next_archetype += 1;
+            }
+            return null;
+        }
+
+        fn lookupUncached(self: *Iter) ?PtrTuple(Components) {
             while (self.next_archetype < self.storage.archetypes.items.len) {
                 const comps = self.storage.components_per_archetype.items[self.next_archetype];
                 if (!utils.isSubset(&self.component_ids, comps)) {
@@ -201,7 +239,48 @@ pub fn query(self: *Self, comptime comps: anytype) QueryIter(comps) {
     }
     std.sort.heap(ComponentId, &componentIds, {}, std.sort.asc(ComponentId));
     _ = assertSorted(ComponentId, &componentIds);
-    return QueryIter(comps).init(self, componentIds);
+    const cache: []const usize = self.lookupQueryHash(&componentIds) catch @panic("could not build cache");
+    return QueryIter(comps).init(self, componentIds, cache);
+}
+
+pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId)) ![]const usize {
+    const query_hash = fnv1a64(component_ids);
+    if (self.queries_hash.get(query_hash)) |cache_entries| {
+        for (cache_entries.items) |entry| {
+            if (std.mem.eql(ComponentId, entry.components, component_ids)) {
+                //std.debug.print("Returning cached {any}\n", .{component_ids});
+                return entry.archetypes;
+            }
+        }
+    }
+
+    //std.debug.print("Building cache {any}\n", .{component_ids});
+    var cache = std.ArrayList(usize).init(self.allocator);
+    var next_archetype: usize = 0;
+    while (next_archetype < self.archetypes.items.len) {
+        const archetype_comps = self.components_per_archetype.items[next_archetype];
+        if (!utils.isSubset(component_ids, archetype_comps)) {
+            // not a subset, check next archetype
+            next_archetype += 1;
+            continue;
+        }
+        try cache.append(next_archetype);
+        next_archetype += 1;
+    }
+    const asSlice = try cache.toOwnedSlice();
+    const cache_entry = CacheEntry{
+        .archetypes = asSlice,
+        .components = try self.allocator.dupe(ComponentId, component_ids),
+    };
+    const entry_ptr = self.queries_hash.getPtr(query_hash);
+    if (entry_ptr) |ptr| {
+        try ptr.append(cache_entry);
+    } else {
+        var fresh = std.ArrayList(CacheEntry).init(self.allocator);
+        try fresh.append(cache_entry);
+        try self.queries_hash.put(query_hash, fresh);
+    }
+    return asSlice;
 }
 
 pub const DynamicScopeOptions = struct {
@@ -281,7 +360,7 @@ pub fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
     return wrapped;
 }
 
-pub fn deinit(self: Self) void {
+pub fn deinit(self: *Self) void {
     self.components_per_archetype.deinit();
     for (self.archetypes.items) |*archetype| {
         self.allocator.free(archetype.components);
@@ -292,6 +371,20 @@ pub fn deinit(self: Self) void {
         archetype.entities.deinit();
     }
     self.archetypes.deinit();
+    self.invalidateCache();
+    self.queries_hash.deinit();
+}
+
+fn invalidateCache(self: *Self) void {
+    var iter = self.queries_hash.valueIterator();
+    while (iter.next()) |c| {
+        for (c.items) |item| {
+            self.allocator.free(item.archetypes);
+            self.allocator.free(item.components);
+        }
+        c.deinit();
+    }
+    self.queries_hash.clearRetainingCapacity();
 }
 
 pub fn componentFree(comptime T: type) ComponentFree {
@@ -305,4 +398,18 @@ pub fn componentFree(comptime T: type) ComponentFree {
 fn emptyDeinit(ptr: *anyopaque, allocator: std.mem.Allocator) void {
     _ = ptr;
     _ = allocator;
+}
+
+pub fn fnv1a64(data: []const u64) u64 {
+    var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
+    const prime: u64 = 0x100000001b3; // FNV prime
+
+    for (data) |x| {
+        const bytes = std.mem.asBytes(&x);
+        for (bytes) |b| {
+            hash ^= @as(u64, b);
+            hash *%= prime; // *= prime, wrapping multiply
+        }
+    }
+    return hash;
 }

@@ -15,6 +15,13 @@
 - creating components/entities in lua [[#Exposing constructors to lua]]
 - Lua defined components - this one is hard and not sure how to do this yet
 
+### Hashing queries 
+
+As long as no new archetypes have been added we can hash queries 
+Basically keep a special hashed query that knows archetype indexes
+it will traverse. 
+
+
 ### Commands
 
 Commands struct would need to maybe even allocate components and entity.

@@ -35,15 +35,18 @@ pub const DynamicQueryScope = struct {
     sorted_component_ids: []const ComponentId,
     storage: *Storage,
     allocator: std.mem.Allocator,
+    cache: []const usize,
 
     pub fn init(storage: *Storage, component_ids: []const ComponentId, allocator: std.mem.Allocator) !DynamicQueryScope {
         const sorted = try allocator.dupe(ComponentId, component_ids);
         std.sort.heap(ComponentId, sorted, {}, std.sort.asc(ComponentId));
+        const cache = try storage.lookupQueryHash(sorted);
         return .{
             .component_ids = component_ids,
             .sorted_component_ids = sorted,
             .storage = storage,
             .allocator = allocator,
+            .cache = cache,
         };
     }
 
@@ -53,6 +56,7 @@ pub const DynamicQueryScope = struct {
             .sorted_component_ids = self.sorted_component_ids,
             .storage = self.storage,
             .allocator = self.allocator,
+            .cache = self.cache,
         };
     }
 
@@ -75,6 +79,7 @@ pub const DynamicQueryIter = struct {
     next_archetype: usize = 0,
     current_entity_iterator: ?std.AutoHashMap(usize, Entity).ValueIterator = null,
     allocator: std.mem.Allocator,
+    cache: []const usize,
 
     pub fn next(self: *Self) ?[]LuaAccessibleOpaqueComponent {
         if (self.current_entity_iterator) |*it| {
@@ -84,6 +89,34 @@ pub const DynamicQueryIter = struct {
             // iterator ended
             self.current_entity_iterator = null;
         }
+        //if (self.cache) |cache| {
+        return self.lookupCached(self.cache);
+        //}
+        //return self.lookupUncached();
+    }
+
+    fn lookupCached(self: *Self, cache: []const usize) ?[]LuaAccessibleOpaqueComponent {
+        while (self.next_archetype < cache.len) {
+            const archetype_index = cache[self.next_archetype];
+            self.current_entity_iterator = self
+                .storage
+                .archetypes
+                .items[archetype_index]
+                .entities
+                .valueIterator();
+            if (self.current_entity_iterator.?.next()) |entity| {
+                // after out value iterator runs out we have to check next arcehtypr
+                self.next_archetype += 1;
+                return self.getComponentsFromEntity(entity);
+            }
+            // no entities in the iterator
+            self.current_entity_iterator = null;
+            self.next_archetype += 1;
+        }
+        return null;
+    }
+
+    fn lookupUncached(self: *Self) ?[]LuaAccessibleOpaqueComponent {
         while (self.next_archetype < self.storage.archetypes.items.len) {
             const comps = self.storage.components_per_archetype.items[self.next_archetype];
             if (!utils.isSubset(self.sorted_component_ids, comps)) {

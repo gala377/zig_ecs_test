@@ -94,11 +94,15 @@ pub const Game = struct {
         try self.installRuntime();
 
         rl.setConfigFlags(.{ .window_highdpi = true });
-        rl.setTargetFPS(self.options.window.targetFps);
+        //rl.setTargetFPS(self.options.window.targetFps);
         rl.initWindow(self.options.window.size.width, self.options.window.size.height, self.options.window.title);
         defer rl.closeWindow();
 
+
+        var iters: usize = 1;
+        var total: usize = 0;
         while (!self.should_close) : (self.should_close = rl.windowShouldClose() or self.should_close) {
+            const start = try std.time.Instant.now();
             rl.beginDrawing();
 
             for (self.systems.items) |sys| {
@@ -115,6 +119,15 @@ pub const Game = struct {
 
             rl.clearBackground(.black);
             rl.endDrawing();
+
+            const end = try std.time.Instant.now();
+            const elapsed_ns = end.since(start); 
+            total += elapsed_ns;
+            const avg = total / iters;
+            const seconds_per_frame = @as(f64, @floatFromInt(avg)) / 1_000_000_000.0;
+            const fps = 1.0 / seconds_per_frame;
+            iters += 1;
+            std.debug.print("FPS: {d:.2}\n", .{fps});
         }
     }
 
