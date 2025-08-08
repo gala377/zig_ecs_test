@@ -3,6 +3,7 @@ const std = @import("std");
 const Entity = @import("entity.zig");
 const EntityStorage = @import("entity_storage.zig");
 const Component = @import("component.zig").LibComponent;
+const utils = @import("utils.zig");
 
 pub const ComponentWrapper = struct {
     pointer: *anyopaque,
@@ -26,16 +27,18 @@ pub const Scene = struct {
     id: usize,
     inner_id: usize,
     entity_storage: EntityStorage,
+    idprovider: utils.IdProvider,
 
     /// Can be accessed directly to query for components.
     scene_allocator: std.mem.Allocator,
 
-    pub fn init(id: usize, allocator: std.mem.Allocator) !Self {
+    pub fn init(id: usize, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !Self {
         return .{
             .id = id,
             .scene_allocator = allocator,
             .inner_id = 0,
-            .entity_storage = try EntityStorage.init(allocator),
+            .idprovider = idprovider,
+            .entity_storage = try EntityStorage.init(allocator, idprovider),
         };
     }
 

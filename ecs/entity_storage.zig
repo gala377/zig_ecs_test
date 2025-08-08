@@ -1,13 +1,14 @@
 const std = @import("std");
-const Entity = @import("entity.zig");
+
 const ComponentId = @import("component.zig").ComponentId;
-const Sorted = @import("utils.zig").Sorted;
-const PtrTuple = @import("utils.zig").PtrTuple;
-const assertSorted = @import("utils.zig").assertSorted;
-const utils = @import("utils.zig");
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
-const clua = @import("lua_lib").clib;
+const Entity = @import("entity.zig");
+const PtrTuple = @import("utils.zig").PtrTuple;
+const Sorted = @import("utils.zig").Sorted;
+const assertSorted = @import("utils.zig").assertSorted;
 const builtin = @import("builtin");
+const clua = @import("lua_lib").clib;
+const utils = @import("utils.zig");
 
 pub const ComponentDeinit = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentFree = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
@@ -34,6 +35,7 @@ archetypes: std.ArrayList(ArchetypeStorage),
 components_per_archetype: std.ArrayList(Sorted([]const ComponentId)),
 queries_hash: std.AutoHashMap(u64, std.ArrayList(CacheEntry)),
 allocator: std.mem.Allocator,
+idprovider: utils.IdProvider,
 
 const CacheEntry = struct {
     components: []const ComponentId,
@@ -42,12 +44,13 @@ const CacheEntry = struct {
 
 const Self = @This();
 
-pub fn init(allocator: std.mem.Allocator) !Self {
+pub fn init(allocator: std.mem.Allocator, idprovider: utils.IdProvider) !Self {
     return .{
         .archetypes = .init(allocator),
         .components_per_archetype = .init(allocator),
         .allocator = allocator,
         .queries_hash = .init(allocator),
+        .idprovider = idprovider,
     };
 }
 
@@ -61,7 +64,7 @@ pub fn makeEntity(self: *Self, id: usize, components: anytype) !void {
     var componentIds: [infoStruct.fields.len]ComponentId = undefined;
     inline for (components, 0..) |component, index| {
         componentsStorage[index] = try self.allocComponent(component);
-        componentIds[index] = @TypeOf(component).comp_id;
+        componentIds[index] = componentsStorage[index].component_id;
     }
     var entity = Entity.init(id, self.allocator);
     try entity.addComponents(&componentsStorage);
@@ -90,15 +93,14 @@ pub fn removeEntities(self: *Self, ids: []usize) void {
 }
 
 pub fn insertEntity(self: *Self, id: usize, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
-    std.debug.print("Inserting entity\n", .{});
     var component_ids = try self.allocator.alloc(ComponentId, components.count());
     defer self.allocator.free(component_ids);
+
     var keys = components.keyIterator();
     var idx: usize = 0;
     while (keys.next()) |cid| {
         component_ids[idx] = cid.*;
         idx += 1;
-        std.debug.print("component id = {d}\n", .{cid.*});
     }
     std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
     // global entity
@@ -159,19 +161,21 @@ pub fn QueryIter(comptime Components: anytype) type {
         next_archetype: usize = 0,
         current_entity_iterator: ?std.AutoHashMap(usize, Entity).ValueIterator = null,
         cache: []const usize,
+        idprovider: utils.IdProvider,
 
-        pub fn init(storage: *Storage, component_ids: [Len]ComponentId, cache: []const usize) Iter {
+        pub fn init(storage: *Storage, component_ids: [Len]ComponentId, cache: []const usize, idprovider: utils.IdProvider) Iter {
             return .{
                 .component_ids = component_ids,
                 .storage = storage,
                 .cache = cache,
+                .idprovider = idprovider,
             };
         }
 
         pub fn next(self: *Iter) ?PtrTuple(Components) {
             if (self.current_entity_iterator) |*it| {
                 if (it.next()) |entity| {
-                    return getComponentsFromEntity(entity);
+                    return self.getComponentsFromEntity(entity);
                 }
                 // iterator ended
                 self.current_entity_iterator = null;
@@ -194,7 +198,7 @@ pub fn QueryIter(comptime Components: anytype) type {
                 if (self.current_entity_iterator.?.next()) |entity| {
                     // after out value iterator runs out we have to check next arcehtypr
                     self.next_archetype += 1;
-                    return getComponentsFromEntity(entity);
+                    return self.getComponentsFromEntity(entity);
                 }
                 // no entities in the iterator
                 self.current_entity_iterator = null;
@@ -220,7 +224,7 @@ pub fn QueryIter(comptime Components: anytype) type {
                 if (self.current_entity_iterator.?.next()) |entity| {
                     // after out value iterator runs out we have to check next arcehtypr
                     self.next_archetype += 1;
-                    return getComponentsFromEntity(entity);
+                    return self.getComponentsFromEntity(entity);
                 }
                 // no entities in the iterator
                 self.current_entity_iterator = null;
@@ -229,10 +233,10 @@ pub fn QueryIter(comptime Components: anytype) type {
             return null;
         }
 
-        fn getComponentsFromEntity(entity: *Entity) PtrTuple(Components) {
+        fn getComponentsFromEntity(self: *Iter, entity: *Entity) PtrTuple(Components) {
             var res: PtrTuple(Components) = undefined;
             inline for (Components, 0..) |Component, idx| {
-                const id = Component.comp_id;
+                const id = utils.dynamicTypeId(Component, self.idprovider);
                 const comp: *ComponentWrapper = entity.components.getPtr(id).?;
                 const asptr: *Component = @ptrCast(@alignCast(comp.pointer));
                 res[idx] = asptr;
@@ -254,12 +258,12 @@ pub fn query(self: *Self, comptime comps: anytype) QueryIter(comps) {
         if (tinfo != .type) {
             @compileError("query accepts a typle of types");
         }
-        componentIds[index] = component.comp_id;
+        componentIds[index] = utils.dynamicTypeId(component, self.idprovider);
     }
     std.sort.heap(ComponentId, &componentIds, {}, std.sort.asc(ComponentId));
     _ = assertSorted(ComponentId, &componentIds);
     const cache: []const usize = self.lookupQueryHash(&componentIds) catch @panic("could not build cache");
-    return QueryIter(comps).init(self, componentIds, cache);
+    return QueryIter(comps).init(self, componentIds, cache, self.idprovider);
 }
 
 pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId)) ![]const usize {
@@ -370,7 +374,7 @@ pub fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
         .pointer = @ptrCast(cptr),
         .alignment = @alignOf(Component),
         .size = @sizeOf(Component),
-        .component_id = Component.comp_id,
+        .component_id = utils.dynamicTypeId(Component, self.idprovider),
         .name = Component.comp_name,
         .deinit = compDeinit,
         .free = componentFree(Component),

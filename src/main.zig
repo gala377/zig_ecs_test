@@ -48,7 +48,7 @@ fn runGame(allocator: std.mem.Allocator) !void {
     try imgui.exportLua(&game);
     try logic.installMainLogic(&game);
 
-    const scene = try Scene.init(game.newId(), allocator);
+    const scene = try game.newScene();
     try game.setInitialScene(scene);
 
     try game.run();

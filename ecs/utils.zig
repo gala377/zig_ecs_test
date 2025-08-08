@@ -116,3 +116,28 @@ pub fn ZigPointer(comptime T: type) type {
         ptr: *T,
     };
 }
+
+pub const IdProvider = struct {
+    ctx: *anyopaque,
+    nextFn: *const fn (*anyopaque) usize,
+
+    pub fn next(self: *const IdProvider) usize {
+        const next_id = (self.nextFn)(self.ctx);
+        return next_id;
+    }
+};
+
+pub fn dynamicTypeId(comptime T: type, id_provider: ?IdProvider) usize {
+    const id = &struct {
+        const _ = T;
+        var id: ?usize = null;
+    }.id;
+    if (id.*) |val| {
+        return val;
+    }
+    if (id_provider == null) {
+        @panic("both null cannot do much about it");
+    }
+    id.* = id_provider.?.next();
+    return id.*.?;
+}

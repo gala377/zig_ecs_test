@@ -3,33 +3,11 @@ const clua = lua.clib;
 const std = @import("std");
 const utils = @import("utils.zig");
 
-fn simpleHashString(comptime str: []const u8) u64 {
-    var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
-    const prime: u64 = 0x100000001b3;
-
-    inline for (str) |b| { // inline so comptime can fully unroll
-        hash ^= b;
-        hash *%= prime; // wrapping multiply
-    }
-    return hash;
-}
-
-pub fn newComponentId(str: []const u8) u64 {
-    var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
-    const prime: u64 = 0x100000001b3;
-    for (str) |b| { // inline so comptime can fully unroll
-        hash ^= b;
-        hash *%= prime; // wrapping multiply
-    }
-    return hash;
-}
-
 pub const ComponentId = u64;
 
 pub fn Component(comptime T: type) type {
     return struct {
         pub const is_component_marker: void = void{};
-        pub const comp_id: ComponentId = simpleHashString(@typeName(T));
         pub const comp_name: []const u8 = @typeName(T);
     };
 }
@@ -38,7 +16,6 @@ pub fn LibComponent(comptime name_prefix: []const u8, comptime T: type) type {
     const expanded_name = name_prefix ++ "." ++ @typeName(T);
     return struct {
         pub const is_component_marker: void = void{};
-        pub const comp_id: ComponentId = simpleHashString(expanded_name);
         pub const comp_name: []const u8 = expanded_name;
     };
 }
@@ -301,20 +278,48 @@ pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
             try writer.print("{s} = {{}}\n\n", .{T.comp_name});
         }
 
-        pub fn luaGenerateDataDefinition(writer: std.io.AnyWriter) !void {
-            try writer.print("---@type {s}\n", .{T.comp_name});
-            const emit_local = std.mem.indexOfScalar(u8, T.comp_name, '.') == null;
-            if (emit_local) {
-                try writer.writeAll("local ");
+        pub fn exportId(state: *clua.lua_State, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !void {
+            const comp_name: []const u8 = T.comp_name;
+            var segments = std.mem.splitScalar(u8, comp_name, '.');
+            var idx: usize = 0;
+            while (segments.next()) |segment| {
+                const name = try allocator.dupeZ(u8, segment);
+                defer allocator.free(name);
+                if (idx == 0) {
+                    const t = clua.lua_getglobal(state, name.ptr);
+                    if (t == clua.LUA_TNIL) {
+                        clua.lua_pop(state, 1);
+                        clua.lua_newtable(state);
+                        clua.lua_setglobal(state, name.ptr);
+                        _ = clua.lua_getglobal(state, name.ptr);
+                    }
+                } else {
+                    const t = clua.lua_getfield(state, -1, name.ptr);
+                    if (t == clua.LUA_TNIL) {
+                        clua.lua_pop(state, 1);
+                        clua.lua_newtable(state);
+                        clua.lua_setfield(state, -2, name.ptr);
+                        _ = clua.lua_getfield(state, -1, name.ptr);
+                    }
+                }
+                idx += 1;
             }
-            const hash: i64 = @bitCast(T.comp_id);
-            try writer.print(
-                \\{s} = {{
-                \\  component_hash = {d},
-                \\  metatable_name = "{s}",
-                \\}}
-            , .{ T.comp_name, hash, MetaTableName });
-            try writer.writeAll("\n");
+            const th = clua.lua_getfield(state, -1, "component_hash");
+            if (th == clua.LUA_TNIL) {
+                clua.lua_pop(state, 1);
+                const id = utils.dynamicTypeId(T, idprovider);
+                const lua_id: c_longlong = @bitCast(id);
+                clua.lua_pushinteger(state, lua_id);
+                clua.lua_setfield(state, -2, "component_hash");
+            }
+
+            const tn = clua.lua_getfield(state, -1, "metatable_name");
+            if (tn == clua.LUA_TNIL) {
+                clua.lua_pop(state, 1);
+                _ = clua.lua_pushlstring(state, MetaTableName.ptr, MetaTableName.len);
+                clua.lua_setfield(state, -2, "metatable_name");
+            }
+            clua.lua_pop(state, @as(c_int, @intCast(idx)));
         }
     };
 }

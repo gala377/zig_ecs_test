@@ -119,6 +119,9 @@ pub fn build(b: *std.Build) void {
 
     const generate_step = b.step("generate", "Generate lua declaration files");
     generate_step.dependOn(&run_generate_cmd.step);
+
+    const build_exe_step = b.step("build_exe", "Build the main executable");
+    build_exe_step.dependOn(&exe.step);
 }
 
 fn checkForLuaFiles(b: *std.Build) *Step {

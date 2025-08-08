@@ -6,28 +6,27 @@ const clua = lua.clib;
 const rg = @import("raygui");
 const rl = @import("raylib");
 
-const commands = @import("commands.zig");
 const Component = @import("component.zig").LibComponent;
-const component_mod = @import("component.zig");
 const ComponentId = @import("component.zig").ComponentId;
 const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
 const DeclarationGenerator = @import("declaration_generator.zig");
 const DynamicQueryIter = @import("dynamic_query.zig").DynamicQueryIter;
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 const DynamicScopeOptions = @import("entity_storage.zig").DynamicScopeOptions;
+const Entity = @import("entity.zig");
 const EntityId = @import("scene.zig").EntityId;
 const EntityStorage = @import("entity_storage.zig");
-const Entity = @import("entity.zig");
 const ExportLua = @import("component.zig").ExportLua;
 const LuaAccessibleOpaqueComponent = @import("dynamic_query.zig").LuaAccessibleOpaqueComponent;
 const LuaSystem = @import("lua_system.zig");
-const make_system = @import("system.zig").system;
 const PtrTuple = @import("utils.zig").PtrTuple;
 const Resource = @import("resource.zig").Resource;
 const Scene = @import("scene.zig").Scene;
-const utils = @import("utils.zig");
-const mksystem = @import("system.zig").system;
+const commands = @import("commands.zig");
 const commands_system = @import("commands_system.zig");
+const component_mod = @import("component.zig");
+const mksystem = @import("system.zig").system;
+const utils = @import("utils.zig");
 
 pub const Size = struct {
     width: i32,
@@ -54,6 +53,24 @@ pub const Sentinel = usize;
 
 pub const System = *const fn (game: *Game) void;
 
+const SimpleIdProvider = struct {
+    inner: usize = 0,
+
+    fn next(self: *SimpleIdProvider) usize {
+        self.inner += 1;
+        return self.inner;
+    }
+
+    pub fn idprovider(
+        self: *SimpleIdProvider,
+    ) utils.IdProvider {
+        return .{
+            .ctx = @ptrCast(self),
+            .nextFn = @ptrCast(&next),
+        };
+    }
+};
+
 pub const Game = struct {
     const Self = @This();
 
@@ -74,9 +91,12 @@ pub const Game = struct {
     lua_systems: std.ArrayList(LuaSystem),
     global_entity_storage: EntityStorage,
     seen_components: std.AutoHashMap(u64, []const u8),
+    idprovider: *SimpleIdProvider,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
         const state = try lua.State.init(allocator);
+        var id_provider = try allocator.create(SimpleIdProvider);
+        id_provider.* = SimpleIdProvider{};
         return .{
             .allocator = allocator,
             .lua_state = state,
@@ -86,9 +106,10 @@ pub const Game = struct {
             .systems = .init(allocator),
             .deffered_systems = .init(allocator),
             .current_scene = null,
-            .global_entity_storage = try EntityStorage.init(allocator),
+            .global_entity_storage = try EntityStorage.init(allocator, id_provider.idprovider()),
             .lua_systems = .init(allocator),
             .seen_components = .init(allocator),
+            .idprovider = id_provider,
         };
     }
 
@@ -139,6 +160,9 @@ pub const Game = struct {
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
         Comp.registerMetaTable(self.lua_state);
+        Comp.exportId(self.lua_state.state, self.idprovider.idprovider(), self.allocator) catch {
+            @panic("could not export component to lua");
+        };
     }
 
     pub fn query(self: *Self, comptime components: anytype) Query(components) {
@@ -155,6 +179,10 @@ pub const Game = struct {
             .scene_scope = scene_scope,
             .allocator = self.allocator,
         };
+    }
+
+    pub fn newScene(self: *Self) !Scene {
+        return .init(self.newId(), self.idprovider.idprovider(), self.allocator);
     }
 
     pub fn dynamicQueryScopeOpts(self: *Self, components: []const ComponentId, options: DynamicScopeOptions) !JoinedDynamicScope {
@@ -224,9 +252,6 @@ pub const Game = struct {
 
     pub fn newGlobalEntity(self: *Self, components: anytype) !EntityId {
         const id = self.newId();
-        inline for (components) |comp| {
-            self.component_collision_check(@TypeOf(comp).comp_id, @TypeOf(comp).comp_name) catch @panic("oom");
-        }
         const with_id = .{EntityId{
             .scene_id = 0,
             .entity_id = id,
@@ -263,10 +288,6 @@ pub const Game = struct {
     }
 
     pub fn insertEntity(self: *Self, id: EntityId, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
-        var iter = components.valueIterator();
-        while (iter.next()) |comp| {
-            self.component_collision_check(comp.component_id, comp.name) catch @panic("oom");
-        }
         if (id.scene_id == 0) {
             try self.global_entity_storage.insertEntity(id.entity_id, components);
             return;
@@ -308,27 +329,16 @@ pub const Game = struct {
             self.allocator.free(name.*);
         }
         self.seen_components.deinit();
+        self.allocator.destroy(self.idprovider);
     }
 
     pub fn newId(self: *Self) usize {
-        const old = self.inner_id;
-        self.inner_id += 1;
-        return old;
+        return self.idprovider.next();
     }
 
     pub fn luaLoad(self: *Self, source: []const u8) !lua.Ref {
         try self.lua_state.load(source);
         return self.lua_state.makeRef();
-    }
-
-    pub fn component_collision_check(self: *Self, component_id: u64, component_name: []const u8) !void {
-        if (self.seen_components.get(component_id)) |name| {
-            if (!std.mem.eql(u8, name, component_name)) {
-                std.debug.panic("Collision on components {s} and {s}\n", .{ name, component_name });
-            }
-            return;
-        }
-        try self.seen_components.put(component_id, try self.allocator.dupe(u8, component_name));
     }
 };
 
@@ -365,23 +375,6 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
         game.exportComponent(GameActions);
         try DynamicQuery.registerMetaTable(game.lua_state);
     }
-    const state = game.lua_state.state;
-    lua.clib.lua_pushcclosure(state, &luaHash, 0);
-    lua.clib.lua_setglobal(state, "ComponentHash");
-}
-
-fn luaHash(state: ?*lua.clib.lua_State) callconv(.c) c_int {
-    var string_len: usize = undefined;
-    // 1 refers to the first argument, from the bottom of the stack
-    const lstr: [*c]const u8 = lua.clib.lua_tolstring(state, 1, &string_len);
-    if (lstr == null) {
-        @panic("Could not hash, not a string");
-    }
-    const str: []const u8 = lstr[0..string_len];
-    const comp_id = component_mod.newComponentId(str);
-    const lua_int: i64 = @bitCast(comp_id);
-    lua.clib.lua_pushinteger(state, lua_int);
-    return 1;
 }
 
 pub fn registerDefaultComponentsForBuild(generator: *DeclarationGenerator) !void {

@@ -171,7 +171,7 @@ pub const DynamicQueryIter = struct {
     }
 
     pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
-        std.debug.print("calling next in zig\n", .{});
+        // std.debug.print("calling next in zig\n", .{});
         const ptr: *utils.ZigPointer(Self) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
         const self = ptr.ptr;
         const rest = self.next();

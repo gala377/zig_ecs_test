@@ -3,13 +3,17 @@
 ---@alias ButtonClose logic.ButtonClose
 
 local system = require("scripts.lib.system")
-local components = require("scripts.lib.components")
-local Button = components.ecs.imgui.components.Button
-local GameActions = components.ecs.game.GameActions
-local ButtonClose = components.logic.ButtonClose
-local ButtonOpen = components.logic.ButtonOpen
+local Button = ecs.imgui.components.Button
+local GameActions = ecs.game.GameActions
+local ButtonClose = logic.ButtonClose
+local ButtonOpen = logic.ButtonOpen
 
 local query = require("scripts.lib.query")
+
+print(tostring(Button.component_hash))
+print(tostring(GameActions.component_hash))
+print(tostring(ButtonClose.component_hash))
+print(tostring(ButtonOpen.component_hash))
 
 ---@param button Query<[Button, ButtonClose]>
 ---@param actions Query<[GameActions]>

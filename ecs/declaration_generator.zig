@@ -3,7 +3,6 @@ const Self = @This();
 
 comp_names: std.StringHashMap(void),
 generators: std.ArrayList(*const fn (std.io.AnyWriter) anyerror!void),
-data_generators: std.ArrayList(*const fn (std.io.AnyWriter) anyerror!void),
 types_path: []const u8,
 components_path: []const u8,
 allocator: std.mem.Allocator,
@@ -13,7 +12,6 @@ pub fn init(types_path: []const u8, components_path: []const u8, allocator: std.
         .comp_names = .init(allocator),
         .types_path = types_path,
         .generators = .init(allocator),
-        .data_generators = .init(allocator),
         .components_path = components_path,
         .allocator = allocator,
     };
@@ -22,7 +20,6 @@ pub fn init(types_path: []const u8, components_path: []const u8, allocator: std.
 pub fn deinit(self: *Self) void {
     self.generators.deinit();
     self.comp_names.deinit();
-    self.data_generators.deinit();
 }
 
 pub fn registerComponentsForBuild(self: *Self, comptime Comps: anytype) !void {
@@ -32,7 +29,6 @@ pub fn registerComponentsForBuild(self: *Self, comptime Comps: anytype) !void {
 }
 pub fn registerComponentForBuild(self: *Self, comptime Comp: type) !void {
     try self.generators.append(@ptrCast(&Comp.luaGenerateStubFile));
-    try self.data_generators.append(@ptrCast(&Comp.luaGenerateDataDefinition));
     if (try self.comp_names.fetchPut(Comp.comp_name, {})) |_| {
         std.debug.print("Component {s} is already registered\n", .{Comp.comp_name});
         return error.componentAlreadyRegistered;
@@ -144,9 +140,6 @@ pub fn generateDataFiles(self: *Self, writer: std.io.AnyWriter) anyerror!void {
         top_level.deinit();
     }
     try writer.writeAll("-- START TYPES\n\n");
-    for (self.data_generators.items) |func| {
-        try func(writer);
-    }
     try writer.writeAll("\n-- END TYPES\n\n");
 
     // we need to emit return and then all the namespaces
