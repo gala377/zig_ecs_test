@@ -29,11 +29,11 @@ local function click_run(buttons, actions)
 	for button in query.iter(buttons) do
 		---@cast button Button
 		if button.clicked then
-			print("Got button click of " .. button.title)
+			-- print("Got button click of " .. button.title)
 			local ga = query.single(actions)
 			---@cast ga GameActions
 			ga.test_field = (ga.test_field or 0) + 1
-			print("clicked " .. tostring(ga.test_field) .. " times")
+			-- print("clicked " .. tostring(ga.test_field) .. " times")
 		end
 	end
 end
@@ -44,7 +44,7 @@ local function change_title(buttons)
 	local button, _ = query.single(buttons)
 	---@cast button Button
 	if button.clicked then
-		button.title = "Clicked " .. tostring(called) .. " times"
+		-- button.title = "Clicked " .. tostring(called) .. " times"
 		called = called + 1
 	end
 end

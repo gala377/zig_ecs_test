@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Entity = @import("entity.zig");
 const EntityStorage = @import("entity_storage.zig");
+const Component = @import("component.zig").LibComponent;
 
 pub const ComponentWrapper = struct {
     pointer: *anyopaque,
@@ -12,6 +13,7 @@ pub const ComponentWrapper = struct {
 };
 
 pub const EntityId = struct {
+    pub usingnamespace Component("ecs", EntityId);
     scene_id: usize,
     entity_id: usize,
 };

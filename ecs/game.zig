@@ -100,10 +100,10 @@ pub const Game = struct {
         rl.initWindow(self.options.window.size.width, self.options.window.size.height, self.options.window.title);
         defer rl.closeWindow();
 
-        var iters: usize = 1;
-        var total: usize = 0;
+        // var iters: usize = 1;
+        // var total: usize = 0;
         while (!self.should_close) : (self.should_close = rl.windowShouldClose() or self.should_close) {
-            const start = try std.time.Instant.now();
+            // const start = try std.time.Instant.now();
             rl.beginDrawing();
 
             for (self.systems.items) |sys| {
@@ -121,14 +121,14 @@ pub const Game = struct {
             rl.clearBackground(.black);
             rl.endDrawing();
 
-            const end = try std.time.Instant.now();
-            const elapsed_ns = end.since(start);
-            total += elapsed_ns;
-            const avg = total / iters;
-            const seconds_per_frame = @as(f64, @floatFromInt(avg)) / 1_000_000_000.0;
-            const fps = 1.0 / seconds_per_frame;
-            iters += 1;
-            std.debug.print("FPS: {d:.2}\n", .{fps});
+            // const end = try std.time.Instant.now();
+            // const elapsed_ns = end.since(start);
+            // total += elapsed_ns;
+            // const avg = total / iters;
+            // const seconds_per_frame = @as(f64, @floatFromInt(avg)) / 1_000_000_000.0;
+            // const fps = 1.0 / seconds_per_frame;
+            // iters += 1;
+            // std.debug.print("FPS: {d:.2}\n", .{fps});
         }
     }
 
@@ -227,9 +227,39 @@ pub const Game = struct {
         inline for (components) |comp| {
             self.component_collision_check(@TypeOf(comp).comp_id, @TypeOf(comp).comp_name) catch @panic("oom");
         }
-        try self.global_entity_storage.makeEntity(id, components);
+        const with_id = .{EntityId{
+            .scene_id = 0,
+            .entity_id = id,
+        }} ++ components;
+        try self.global_entity_storage.makeEntity(id, with_id);
 
         return .{ .scene_id = 0, .entity_id = id };
+    }
+
+    pub fn removeEntities(self: *Self, ids: []EntityId) !void {
+        var global_entities = std.ArrayList(usize).init(self.allocator);
+        defer global_entities.deinit();
+        var scene_entities = std.ArrayList(usize).init(self.allocator);
+        defer scene_entities.deinit();
+        for (ids) |id| {
+            if (id.scene_id == 0) {
+                try global_entities.append(id.entity_id);
+                continue;
+            }
+            if (self.current_scene) |*scene| {
+                if (scene.id == id.scene_id) {
+                    try scene_entities.append(id.entity_id);
+                    continue;
+                }
+            }
+            return error.sceneDoesNotExists;
+        }
+        if (global_entities.items.len > 0) {
+            self.global_entity_storage.removeEntities(global_entities.items);
+        }
+        if (scene_entities.items.len > 0) {
+            self.current_scene.?.entity_storage.removeEntities(scene_entities.items);
+        }
     }
 
     pub fn insertEntity(self: *Self, id: EntityId, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
@@ -239,9 +269,11 @@ pub const Game = struct {
         }
         if (id.scene_id == 0) {
             try self.global_entity_storage.insertEntity(id.entity_id, components);
+            return;
         } else if (self.current_scene) |*scene| {
             if (scene.id == id.scene_id) {
                 try scene.entity_storage.insertEntity(id.entity_id, components);
+                return;
             }
         }
         // TODO: Later, maybe look through other scenes, if we will allow for

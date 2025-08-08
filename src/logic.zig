@@ -15,6 +15,7 @@ const Resource = ecs.Resource;
 const ExportLua = ecs.component.ExportLua;
 const scene = ecs.scene;
 const Commands = ecs.Commands;
+const EntityId = ecs.EntityId;
 
 pub fn installMainLogic(game: *Game) !void {
     try game.addSystems(.{
@@ -22,6 +23,7 @@ pub fn installMainLogic(game: *Game) !void {
         system(call_ref),
         system(spawn_on_click),
         system(read_new_entities),
+        system(remove_last_entity),
     });
     game.exportComponent(ButtonOpen);
     game.exportComponent(ButtonClose);
@@ -40,6 +42,7 @@ pub fn installMainLogic(game: *Game) !void {
     const close_title: [:0]u8 = try game.allocator.dupeZ(u8, "Close");
     const lua_title: [:0]u8 = try game.allocator.dupeZ(u8, "Lua Callback");
     const spawn_title: [:0]u8 = try game.allocator.dupeZ(u8, "Spawn Title");
+    const remove_last_title: [:0]u8 = try game.allocator.dupeZ(u8, "Remove last title");
 
     const buttons_size = Vec2{ .x = 100.0, .y = 25.0 };
     const position = Vec2{ .x = 50.0, .y = 50.0 };
@@ -84,6 +87,16 @@ pub fn installMainLogic(game: *Game) !void {
         },
         ButtonSpawn{},
     });
+
+    _ = try game.newGlobalEntity(.{
+        imgui.components.Button{
+            .pos = position.add_y(buttons_size.y * 4),
+            .size = buttons_size,
+            .title = @ptrCast(remove_last_title),
+            .allocator = game.allocator,
+        },
+        ButtonRemoveLast{},
+    });
 }
 
 pub const TestItem = struct {
@@ -105,18 +118,37 @@ pub fn spawn_on_click(commands: Commands, buttons: *Query(.{ Button, ButtonSpawn
             }
         }
         const next_index = max + 1;
-        cmd.newSceneEntity(.{TestItem{
+        _ = cmd.newSceneEntity(.{TestItem{
             .index = next_index,
         }}) catch @panic("could not make new scene entity");
     }
 }
 
 pub fn read_new_entities(entities: *Query(.{TestItem})) void {
-    while (entities.next()) |e| {
+    var index: usize = 0;
+    while (entities.next()) |e| : (index += 1) {
         var entity: *TestItem = e[0];
         if (!entity.already_logged) {
             entity.already_logged = true;
             std.debug.print("Saw new entity {}\n", .{entity.index});
+        }
+    }
+}
+
+pub fn remove_last_entity(commands: Commands, buttons: *Query(.{ Button, ButtonRemoveLast }), entities: *Query(.{ EntityId, TestItem })) void {
+    const button: *Button, _ = buttons.single();
+    if (button.clicked) {
+        var last: ?EntityId = null;
+        var max: usize = 0;
+        while (entities.next()) |pack| {
+            const entity: *EntityId, const item: *TestItem = pack;
+            if (item.index >= max) {
+                max = item.index;
+                last = entity.*;
+            }
+        }
+        if (last) |id| {
+            commands.get().removeEntity(id) catch @panic("oom");
         }
     }
 }
@@ -133,6 +165,10 @@ pub const ButtonOpen = struct {
 pub const ButtonClose = struct {
     pub usingnamespace Component(ButtonClose);
     pub usingnamespace ExportLua(ButtonClose, .{});
+};
+
+pub const ButtonRemoveLast = struct {
+    pub usingnamespace Component(ButtonRemoveLast);
 };
 
 const ButtonLua = struct {

@@ -73,6 +73,22 @@ pub fn makeEntity(self: *Self, id: usize, components: anytype) !void {
     }
 }
 
+pub fn removeEntities(self: *Self, ids: []usize) void {
+    for (self.archetypes.items) |*archetype| {
+        for (ids) |id| {
+            if (archetype.entities.getPtr(id)) |entity| {
+                var iter = entity.components.valueIterator();
+                while (iter.next()) |c| {
+                    c.deinit(c.pointer, self.allocator);
+                    c.free(c.pointer, self.allocator);
+                }
+                entity.components.deinit();
+                _ = archetype.entities.remove(id);
+            }
+        }
+    }
+}
+
 pub fn insertEntity(self: *Self, id: usize, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
     std.debug.print("Inserting entity\n", .{});
     var component_ids = try self.allocator.alloc(ComponentId, components.count());
@@ -82,6 +98,7 @@ pub fn insertEntity(self: *Self, id: usize, components: std.AutoHashMap(Componen
     while (keys.next()) |cid| {
         component_ids[idx] = cid.*;
         idx += 1;
+        std.debug.print("component id = {d}\n", .{cid.*});
     }
     std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
     // global entity
@@ -105,6 +122,8 @@ fn findOrCreateArchetype(self: *Self, ids: []ComponentId) !*ArchetypeStorage {
 }
 
 fn createArchetype(self: *Self, ids: Sorted([]ComponentId)) !*ArchetypeStorage {
+    // creating archetype invalidates cache
+    self.invalidateCache();
     const heaped = try self.allocator.dupe(ComponentId, ids);
     const new = ArchetypeStorage{
         .components = heaped,
@@ -160,7 +179,7 @@ pub fn QueryIter(comptime Components: anytype) type {
             // if (self.cache) |cache| {
             return self.lookupCached(self.cache);
             // }
-            // return self.lookupUncached();
+            //return self.lookupUncached();
         }
 
         fn lookupCached(self: *Iter, cache: []const usize) ?PtrTuple(Components) {
