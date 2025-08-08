@@ -4,17 +4,22 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 fn simpleHashString(comptime str: []const u8) u64 {
-    var hash: u64 = 5381;
-    for (str) |c| {
-        hash = ((hash << 5) +% hash) +% @as(u64, c); // hash * 33 + c
+    var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
+    const prime: u64 = 0x100000001b3;
+
+    inline for (str) |b| { // inline so comptime can fully unroll
+        hash ^= b;
+        hash *%= prime; // wrapping multiply
     }
     return hash;
 }
 
 pub fn newComponentId(str: []const u8) u64 {
-    var hash: u64 = 5381;
-    for (str) |c| {
-        hash = ((hash << 5) +% hash) +% @as(u64, c); // hash * 33 + c
+    var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
+    const prime: u64 = 0x100000001b3;
+    for (str) |b| { // inline so comptime can fully unroll
+        hash ^= b;
+        hash *%= prime; // wrapping multiply
     }
     return hash;
 }

@@ -18,32 +18,31 @@ local logic = {}
 
 ---@type ecs.game.GameActions
 ecs.game.GameActions = {
-  component_hash = -6795239468146607231,
-  metatable_name = "ecs.game.GameActions_MetaTable",
+	component_hash = -5864332010979387579,
+	metatable_name = "ecs.game.GameActions_MetaTable",
 }
 ---@type ecs.imgui.components.Button
 ecs.imgui.components.Button = {
-  component_hash = -5643622204316327033,
-  metatable_name = "ecs.imgui.components.Button_MetaTable",
+	component_hash = -8292110050267663459,
+	metatable_name = "ecs.imgui.components.Button_MetaTable",
 }
 ---@type game_build.TestComponent
 game_build.TestComponent = {
-  component_hash = -2616240389310087473,
-  metatable_name = "game_build.TestComponent_MetaTable",
+	component_hash = -3652096785328682335,
+	metatable_name = "game_build.TestComponent_MetaTable",
 }
 ---@type logic.ButtonClose
 logic.ButtonClose = {
-  component_hash = 1528081635130897619,
-  metatable_name = "logic.ButtonClose_MetaTable",
+	component_hash = 1626580384311409975,
+	metatable_name = "logic.ButtonClose_MetaTable",
 }
 ---@type logic.ButtonOpen
 logic.ButtonOpen = {
-  component_hash = -4984624697825475857,
-  metatable_name = "logic.ButtonOpen_MetaTable",
+	component_hash = 18210805818963077,
+	metatable_name = "logic.ButtonOpen_MetaTable",
 }
 
 -- END TYPES
-
 
 ---@diagnostic enable: unused-local
 ---@diagnostic enable: missing-fields
@@ -53,3 +52,4 @@ return {
 	ecs = ecs,
 	logic = logic,
 }
+
