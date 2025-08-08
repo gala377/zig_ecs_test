@@ -73,6 +73,7 @@ pub const Game = struct {
     deffered_systems: std.ArrayList(System),
     lua_systems: std.ArrayList(LuaSystem),
     global_entity_storage: EntityStorage,
+    seen_components: std.AutoHashMap(u64, []const u8),
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
         const state = try lua.State.init(allocator);
@@ -87,6 +88,7 @@ pub const Game = struct {
             .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator),
             .lua_systems = .init(allocator),
+            .seen_components = .init(allocator),
         };
     }
 
@@ -97,7 +99,6 @@ pub const Game = struct {
         //rl.setTargetFPS(self.options.window.targetFps);
         rl.initWindow(self.options.window.size.width, self.options.window.size.height, self.options.window.title);
         defer rl.closeWindow();
-
 
         var iters: usize = 1;
         var total: usize = 0;
@@ -121,7 +122,7 @@ pub const Game = struct {
             rl.endDrawing();
 
             const end = try std.time.Instant.now();
-            const elapsed_ns = end.since(start); 
+            const elapsed_ns = end.since(start);
             total += elapsed_ns;
             const avg = total / iters;
             const seconds_per_frame = @as(f64, @floatFromInt(avg)) / 1_000_000_000.0;
@@ -223,11 +224,19 @@ pub const Game = struct {
 
     pub fn newGlobalEntity(self: *Self, components: anytype) !EntityId {
         const id = self.newId();
+        inline for (components) |comp| {
+            self.component_collision_check(@TypeOf(comp).comp_id, @TypeOf(comp).comp_name) catch @panic("oom");
+        }
         try self.global_entity_storage.makeEntity(id, components);
+
         return .{ .scene_id = 0, .entity_id = id };
     }
 
     pub fn insertEntity(self: *Self, id: EntityId, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
+        var iter = components.valueIterator();
+        while (iter.next()) |comp| {
+            self.component_collision_check(comp.component_id, comp.name) catch @panic("oom");
+        }
         if (id.scene_id == 0) {
             try self.global_entity_storage.insertEntity(id.entity_id, components);
         } else if (self.current_scene) |*scene| {
@@ -265,6 +274,11 @@ pub const Game = struct {
         // INFO: components may hold references to lua so we need to
         // dealloc it last
         self.lua_state.deinit();
+        var names = self.seen_components.valueIterator();
+        while (names.next()) |name| {
+            self.allocator.free(name.*);
+        }
+        self.seen_components.deinit();
     }
 
     pub fn newId(self: *Self) usize {
@@ -276,6 +290,16 @@ pub const Game = struct {
     pub fn luaLoad(self: *Self, source: []const u8) !lua.Ref {
         try self.lua_state.load(source);
         return self.lua_state.makeRef();
+    }
+
+    pub fn component_collision_check(self: *Self, component_id: u64, component_name: []const u8) !void {
+        if (self.seen_components.get(component_id)) |name| {
+            if (!std.mem.eql(u8, name, component_name)) {
+                std.debug.panic("Collision on components {s} and {s}\n", .{ name, component_name });
+            }
+            return;
+        }
+        try self.seen_components.put(component_id, try self.allocator.dupe(u8, component_name));
     }
 };
 
