@@ -242,14 +242,11 @@ pub const Game = struct {
         } else if (self.current_scene) |*scene| {
             if (scene.id == id.scene_id) {
                 try scene.entity_storage.insertEntity(id.entity_id, components);
-            } else {
-                return error.sceneDoesNotExist;
             }
-        } else {
-            // TODO: Later, maybe look through other scenes, if we will allow for
-            // storing scenes for later use
-            return error.sceneDoesNotExist;
         }
+        // TODO: Later, maybe look through other scenes, if we will allow for
+        // storing scenes for later use
+        return error.sceneDoesNotExist;
     }
 
     pub fn setInitialScene(self: *Self, scene: Scene) !void {
