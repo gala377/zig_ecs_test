@@ -3,5 +3,9 @@
   "workspace.library": [
     "scripts/types"
   ],
-  "runtime.version": "Lua 5.3"
+  "runtime.version": "Lua 5.3",
+    "diagnostics.globals": [
+        "logic",
+        "ecs"
+    ]
 }

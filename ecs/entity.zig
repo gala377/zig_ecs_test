@@ -25,6 +25,15 @@ pub fn addComponents(self: *Self, components: []ComponentWrapper) !void {
     }
 }
 
+pub fn removeComponents(self: *Self, components: []ComponentId, allocator: std.mem.Allocator) void {
+    for (components) |comp| {
+        const kv = self.components.fetchRemove(comp) orelse continue;
+        const wrapper = kv.value;
+        wrapper.deinit(wrapper.pointer, allocator);
+        wrapper.free(wrapper.pointer, allocator);
+    }
+}
+
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     var components = self.components.valueIterator();
     while (components.next()) |c| {

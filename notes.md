@@ -10,16 +10,10 @@
 
 ## What next
 
-- Adding and removing components [[#Reallocating archetypes]]
-- exposing commands to lua [[#Exposing constructors to lua]]
+- Adding and removing components from entities [[#Reallocating archetypes]]
+- exposing Commands to lua [[#Exposing constructors to lua]]
 - creating components/entities in lua [[#Exposing constructors to lua]]
 - Lua defined components - this one is hard and not sure how to do this yet
-
-### Commands
-
-Commands struct would need to maybe even allocate components and entity.
-It can even reserve id for it. It just needs to defer inserting it into
-archetypes so it is not immediately accessible to other systems.
 
 ### Exposing more types to lua
 
