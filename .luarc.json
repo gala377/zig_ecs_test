@@ -3,9 +3,12 @@
   "workspace.library": [
     "scripts/types"
   ],
-  "runtime.version": "Lua 5.3",
-    "diagnostics.globals": [
-        "logic",
-        "ecs"
-    ]
+  "format.enable": true,
+  "format.defaultConfig": {
+    "callArgParentheses": "remove",
+    "callArgParenthesis": "remove",
+    "call_arg_parentheses": "remove",
+    "call_arg_parenthesis": "remove"
+  },
+  "runtime.version": "Lua 5.3"
 }

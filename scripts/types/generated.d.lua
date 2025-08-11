@@ -5,12 +5,12 @@
 
 -- START NAMESPACES
 
-local game_build = {}
-local ecs = {}
+game_build = {}
+ecs = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
 ecs.game = {}
-local logic = {}
+logic = {}
 
 -- END NAMESPACES
 
@@ -49,8 +49,7 @@ logic.ButtonClose = {}
 ---@field private metatable_name string
 logic.ButtonOpen = {}
 
-
 -- END TYPES
 
-
 ---@diagnostic enable: unused-local
+

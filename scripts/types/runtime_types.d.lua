@@ -15,10 +15,6 @@ local Query = {}
 ---@return `T`?
 function Query:next() end
 
----@param name string
----@return integer
-function ComponentHash(name) end
-
 ---@generic T
 ---@class Slice: { [integer]: T }
 local Slice = {}

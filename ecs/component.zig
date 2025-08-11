@@ -271,10 +271,6 @@ pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
             }
             try writer.writeAll("---@field private component_hash integer\n");
             try writer.writeAll("---@field private metatable_name string\n");
-            const emit_local = std.mem.indexOfScalar(u8, T.comp_name, '.') == null;
-            if (emit_local) {
-                try writer.writeAll("local ");
-            }
             try writer.print("{s} = {{}}\n\n", .{T.comp_name});
         }
 

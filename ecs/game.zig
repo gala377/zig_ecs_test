@@ -69,6 +69,18 @@ const SimpleIdProvider = struct {
             .nextFn = @ptrCast(&next),
         };
     }
+
+    pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
+        const self: *SimpleIdProvider = @alignCast(@ptrCast(clua.lua_touserdata(state, clua.lua_upvalueindex(1))));
+        clua.lua_pushinteger(state, @intCast(self.next()));
+        return 1;
+    }
+
+    pub fn exportIdFunction(self: *SimpleIdProvider, state: *clua.lua_State) void {
+        clua.lua_pushlightuserdata(state, @ptrCast(self));
+        clua.lua_pushcclosure(state, @ptrCast(&luaNext), 1);
+        clua.lua_setglobal(state, "newUniqueInteger");
+    }
 };
 
 pub const Game = struct {
@@ -373,6 +385,7 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
     try game.addSystem(&applyGameActions);
     if (export_lua) {
         game.exportComponent(GameActions);
+        game.idprovider.exportIdFunction(game.lua_state.state);
         try DynamicQuery.registerMetaTable(game.lua_state);
     }
 }

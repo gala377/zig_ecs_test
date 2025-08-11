@@ -10,7 +10,6 @@
 
 ## What next
 
-- Adding and removing components from entities [[#Reallocating archetypes]]
 - exposing Commands to lua [[#Exposing constructors to lua]]
 - creating components/entities in lua [[#Exposing constructors to lua]]
 - Lua defined components - this one is hard and not sure how to do this yet
@@ -39,18 +38,9 @@ we don't need to hold pointers within entity anymore.
 When we move entity we can just mark the index as empty and reuse it 
 later when new entity of this archetype gets created. 
 
-### Reallocating archetypes
-
-If some component is added or removed we need to move entity to another archetype.
-Technically as scene has all entities on the heap. The archetype storage
-can just simply be a map of []component_ids to pointers to entities.
 
 ### Exposing constructors to lua
 
--- depends on: [[#Commands]] 
-
-Components have to be created, that means we have to expose
-a method like - fromLua for components.
 
 This can only be allowed for subset of components where
 all nonnullable fields can be created from lua.
@@ -68,10 +58,6 @@ If a component has non-default, no-lua constructible field it should probably
 just throw runtime error and it should be fine.
 
 ### Lua components
-
--- depends on [#Commands] - without commands there is no way to create
-those components (well we could hack it with like, script setup function or something like this
-but you know)
 
 We can just hold them as refs, the problem is their identity.
 Meaning hash of them.

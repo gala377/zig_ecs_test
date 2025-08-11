@@ -104,7 +104,6 @@ fn emitNamespaces(self: *Self, writer: std.io.AnyWriter) anyerror!std.ArrayList(
             // copy memory so the hashmap can free everything without problems
             try already_emitted.put(try self.allocator.dupe(u8, acc), {});
             if (index == 0) {
-                try writer.writeAll("local ");
                 const copied = try self.allocator.dupe(u8, acc);
                 try top_level_namespaces.append(copied);
             }

@@ -2,18 +2,13 @@
 ---@alias GameActions ecs.game.GameActions
 ---@alias ButtonClose logic.ButtonClose
 
+local query = require("scripts.lib.query")
 local system = require("scripts.lib.system")
+
 local Button = ecs.imgui.components.Button
 local GameActions = ecs.game.GameActions
 local ButtonClose = logic.ButtonClose
 local ButtonOpen = logic.ButtonOpen
-
-local query = require("scripts.lib.query")
-
-print(tostring(Button.component_hash))
-print(tostring(GameActions.component_hash))
-print(tostring(ButtonClose.component_hash))
-print(tostring(ButtonOpen.component_hash))
 
 ---@param button Query<[Button, ButtonClose]>
 ---@param actions Query<[GameActions]>
