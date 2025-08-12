@@ -42,7 +42,7 @@ pub fn removeEntity(self: *Self, id: EntityId) !void {
 pub fn addEntity(self: *Self, id: EntityId, components: []ComponentWrapper) !void {
     var map = std.AutoHashMap(ComponentId, ComponentWrapper).init(self.allocator);
     for (components) |c| {
-        try map.put(c.component_id, c);
+        try map.put(c.vtable.component_id, c);
     }
     try self.entities.append(.{
         .id = id,
@@ -119,8 +119,8 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     for (self.entities.items) |*e| {
         var iter = e.components.valueIterator();
         while (iter.next()) |comp| {
-            comp.deinit(comp.pointer, self.game.allocator);
-            comp.free(comp.pointer, self.game.allocator);
+            comp.vtable.deinit(comp.pointer, self.game.allocator);
+            comp.vtable.free(comp.pointer, self.game.allocator);
         }
         e.components.deinit();
     }

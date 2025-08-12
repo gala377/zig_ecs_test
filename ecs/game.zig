@@ -385,13 +385,15 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
     try game.addSystem(&applyGameActions);
     if (export_lua) {
         game.exportComponent(GameActions);
+        game.exportComponent(EntityId);
         game.idprovider.exportIdFunction(game.lua_state.state);
-        try DynamicQuery.registerMetaTable(game.lua_state);
+        DynamicQuery.registerMetaTable(game.lua_state);
     }
 }
 
 pub fn registerDefaultComponentsForBuild(generator: *DeclarationGenerator) !void {
     try generator.registerComponentForBuild(GameActions);
+    try generator.registerComponentForBuild(EntityId);
 }
 
 fn applyGameActions(game: *Game) void {
@@ -544,7 +546,7 @@ pub const DynamicQuery = struct {
         return 1;
     }
 
-    pub fn registerMetaTable(lstate: lua.State) !void {
+    pub fn registerMetaTable(lstate: lua.State) void {
         const state = lstate.state;
         if (clua.luaL_newmetatable(state, MetaTableName) != 1) {
             @panic("Could not create metatable");

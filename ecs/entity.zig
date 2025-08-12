@@ -17,7 +17,7 @@ pub fn init(id: usize, allocator: std.mem.Allocator) Self {
 
 pub fn addComponents(self: *Self, components: []ComponentWrapper) !void {
     for (components) |c| {
-        const old = try self.components.fetchPut(c.component_id, c);
+        const old = try self.components.fetchPut(c.vtable.component_id, c);
         if (old) |prev| {
             _ = prev;
             @panic("replaced already existing component");
@@ -37,8 +37,8 @@ pub fn removeComponents(self: *Self, components: []ComponentId, allocator: std.m
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     var components = self.components.valueIterator();
     while (components.next()) |c| {
-        c.deinit(c.pointer, allocator);
-        c.free(c.pointer, allocator);
+        c.vtable.deinit(c.pointer, allocator);
+        c.vtable.free(c.pointer, allocator);
     }
     self.components.deinit();
 }

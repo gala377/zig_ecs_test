@@ -150,7 +150,7 @@ pub const DynamicQueryIter = struct {
             const comp = entity.components.getPtr(id).?;
             const wrapped = LuaAccessibleOpaqueComponent{
                 .pointer = comp.pointer,
-                .push = comp.luaPush.?,
+                .push = comp.vtable.luaPush.?,
             };
             res[idx] = wrapped;
         }

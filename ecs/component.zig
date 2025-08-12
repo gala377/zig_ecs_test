@@ -2,6 +2,8 @@ const lua = @import("lua_lib");
 const clua = lua.clib;
 const std = @import("std");
 const utils = @import("utils.zig");
+const entity_storage = @import("entity_storage.zig");
+const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
 
 pub const ComponentId = u64;
 
@@ -188,6 +190,30 @@ pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
             if (clua.lua_setmetatable(state, -2) != 0) {
                 // @panic("object " ++ @typeName(T) ++ " already had a metatable");
             }
+        }
+
+        pub fn wrapperFromLua(state: *clua.lua_State, storage: *entity_storage) !ComponentWrapper {
+            const tableIndex: c_int = 1;
+            const comp: *T = try storage.allocator.create(T);
+            if (comptime @typeInfo(T) != .@"struct") {
+                @compileError("component has to be a struct");
+            }
+            const fields: []const std.builtin.Type.StructField = std.meta.fields(T);
+            inline for (fields) |f| {
+                if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
+                    _ = clua.lua_getfield(state, tableIndex, @ptrCast(f.name));
+                    const value = try luaReadValue(state, f.type, -1, storage.allocator);
+                    @field(comp, f.name) = value;
+                } else {
+                    if (comptime std.mem.eql(u8, f.name, "allocator")) {
+                        comp.allocator = storage.allocator;
+                    } else if (comptime f.default_value_ptr == null) {
+                        @compileError("Field " ++ @typeName(T) ++ "." ++ f.name ++ " cannot be created from lua and doesn't have a default value");
+                    }
+                }
+            }
+            const wrapper = try storage.createWrapper(T, comp);
+            return wrapper;
         }
 
         pub fn luaIndex(state: *clua.lua_State) callconv(.c) c_int {

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Entity = @import("entity.zig");
+const ExportLua = @import("component.zig").ExportLua;
 const EntityStorage = @import("entity_storage.zig");
 const Component = @import("component.zig").LibComponent;
 const utils = @import("utils.zig");
@@ -15,6 +16,7 @@ pub const ComponentWrapper = struct {
 
 pub const EntityId = struct {
     pub usingnamespace Component("ecs", EntityId);
+    pub usingnamespace ExportLua(EntityId, .{});
     scene_id: usize,
     entity_id: usize,
 };

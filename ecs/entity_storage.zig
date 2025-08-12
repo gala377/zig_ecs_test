@@ -10,20 +10,28 @@ const builtin = @import("builtin");
 const clua = @import("lua_lib").clib;
 const utils = @import("utils.zig");
 
+const Self = @This();
+
 pub const ComponentDeinit = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentFree = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentLuaPush = *const fn (*anyopaque, state: *clua.lua_State) void;
+pub const ComponentFromLua = *const fn (state: *clua.lua_State, storage: *Self) void;
 
 pub const ComponentWrapper = struct {
+    const VTable = struct {
+        size: usize,
+        alignment: usize,
+        // Should be static
+        name: []const u8,
+        component_id: ComponentId,
+        deinit: ComponentDeinit,
+        free: ComponentFree,
+        luaPush: ?ComponentLuaPush,
+        fromLua: ?ComponentFromLua,
+    };
+
     pointer: *anyopaque,
-    size: usize,
-    alignment: usize,
-    // Should be static
-    name: []const u8,
-    component_id: ComponentId,
-    deinit: ComponentDeinit,
-    free: ComponentFree,
-    luaPush: ?ComponentLuaPush,
+    vtable: VTable,
 };
 
 pub const ArchetypeStorage = struct {
@@ -41,8 +49,6 @@ const CacheEntry = struct {
     components: []const ComponentId,
     archetypes: []const usize,
 };
-
-const Self = @This();
 
 pub fn init(allocator: std.mem.Allocator, idprovider: utils.IdProvider) !Self {
     return .{
@@ -64,7 +70,7 @@ pub fn makeEntity(self: *Self, id: usize, components: anytype) !void {
     var componentIds: [infoStruct.fields.len]ComponentId = undefined;
     inline for (components, 0..) |component, index| {
         componentsStorage[index] = try self.allocComponent(component);
-        componentIds[index] = componentsStorage[index].component_id;
+        componentIds[index] = componentsStorage[index].vtable.component_id;
     }
     var entity = Entity.init(id, self.allocator);
     try entity.addComponents(&componentsStorage);
@@ -82,8 +88,8 @@ pub fn removeEntities(self: *Self, ids: []usize) void {
             if (archetype.entities.getPtr(id)) |entity| {
                 var iter = entity.components.valueIterator();
                 while (iter.next()) |c| {
-                    c.deinit(c.pointer, self.allocator);
-                    c.free(c.pointer, self.allocator);
+                    c.vtable.deinit(c.pointer, self.allocator);
+                    c.vtable.free(c.pointer, self.allocator);
                 }
                 entity.components.deinit();
                 _ = archetype.entities.remove(id);
@@ -411,7 +417,10 @@ pub fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
     // }
     const cptr = try self.allocator.create(@TypeOf(comp));
     cptr.* = comp;
+    return self.createWrapper(Component, cptr);
+}
 
+pub fn createWrapper(self: *Self, comptime Component: type, cptr: *Component) !ComponentWrapper {
     const compDeinit: ComponentDeinit = if (comptime std.meta.hasMethod(Component, "deinit"))
         @ptrCast(&Component.deinit)
     else
@@ -421,15 +430,22 @@ pub fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
         @ptrCast(&Component.luaPush)
     else
         null;
+    const wrapperFromLua: ?ComponentFromLua = if (comptime std.meta.hasFn(Component, "wrapperFromLua"))
+        @ptrCast(&Component.wrapperFromLua)
+    else
+        null;
     const wrapped: ComponentWrapper = .{
         .pointer = @ptrCast(cptr),
-        .alignment = @alignOf(Component),
-        .size = @sizeOf(Component),
-        .component_id = utils.dynamicTypeId(Component, self.idprovider),
-        .name = Component.comp_name,
-        .deinit = compDeinit,
-        .free = componentFree(Component),
-        .luaPush = compLuaPush,
+        .vtable = .{
+            .alignment = @alignOf(Component),
+            .size = @sizeOf(Component),
+            .component_id = utils.dynamicTypeId(Component, self.idprovider),
+            .name = Component.comp_name,
+            .deinit = compDeinit,
+            .free = componentFree(Component),
+            .luaPush = compLuaPush,
+            .fromLua = wrapperFromLua,
+        },
     };
     return wrapped;
 }

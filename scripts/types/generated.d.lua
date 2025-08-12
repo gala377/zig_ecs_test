@@ -6,11 +6,12 @@
 -- START NAMESPACES
 
 game_build = {}
+logic = {}
 ecs = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
 ecs.game = {}
-logic = {}
+ecs.scene = {}
 
 -- END NAMESPACES
 
@@ -24,6 +25,13 @@ logic = {}
 ---@field private component_hash integer
 ---@field private metatable_name string
 ecs.game.GameActions = {}
+
+---@class ecs.scene.EntityId
+---@field scene_id integer
+---@field entity_id integer
+---@field private component_hash integer
+---@field private metatable_name string
+ecs.scene.EntityId = {}
 
 ---@class ecs.imgui.components.Button
 ---@field title string
@@ -49,7 +57,8 @@ logic.ButtonClose = {}
 ---@field private metatable_name string
 logic.ButtonOpen = {}
 
+
 -- END TYPES
 
----@diagnostic enable: unused-local
 
+---@diagnostic enable: unused-local
