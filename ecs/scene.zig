@@ -5,6 +5,7 @@ const ExportLua = @import("component.zig").ExportLua;
 const EntityStorage = @import("entity_storage.zig");
 const Component = @import("component.zig").LibComponent;
 const utils = @import("utils.zig");
+const VTableStorage = @import("comp_vtable_storage.zig");
 
 pub const ComponentWrapper = struct {
     pointer: *anyopaque,
@@ -34,13 +35,13 @@ pub const Scene = struct {
     /// Can be accessed directly to query for components.
     scene_allocator: std.mem.Allocator,
 
-    pub fn init(id: usize, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !Self {
+    pub fn init(id: usize, idprovider: utils.IdProvider, allocator: std.mem.Allocator, vtable_storage: *VTableStorage) !Self {
         return .{
             .id = id,
             .scene_allocator = allocator,
             .inner_id = 0,
             .idprovider = idprovider,
-            .entity_storage = try EntityStorage.init(allocator, idprovider),
+            .entity_storage = try EntityStorage.init(allocator, idprovider, vtable_storage),
         };
     }
 

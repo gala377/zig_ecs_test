@@ -1,6 +1,7 @@
 const Component = @import("component.zig").Component;
 const std = @import("std");
 const Storage = @import("entity_storage.zig");
+const VTableStorage = @import("comp_vtable_storage.zig");
 
 const Foo = struct {
     pub usingnamespace Component(Foo);

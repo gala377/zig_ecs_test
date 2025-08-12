@@ -5,6 +5,7 @@ const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 const Entity = @import("entity.zig");
 const PtrTuple = @import("utils.zig").PtrTuple;
 const Sorted = @import("utils.zig").Sorted;
+const VTableStorage = @import("comp_vtable_storage.zig");
 const assertSorted = @import("utils.zig").assertSorted;
 const builtin = @import("builtin");
 const clua = @import("lua_lib").clib;
@@ -18,7 +19,7 @@ pub const ComponentLuaPush = *const fn (*anyopaque, state: *clua.lua_State) void
 pub const ComponentFromLua = *const fn (state: *clua.lua_State, storage: *Self) void;
 
 pub const ComponentWrapper = struct {
-    const VTable = struct {
+    pub const VTable = struct {
         size: usize,
         alignment: usize,
         // Should be static
@@ -31,7 +32,7 @@ pub const ComponentWrapper = struct {
     };
 
     pointer: *anyopaque,
-    vtable: VTable,
+    vtable: *VTable,
 };
 
 pub const ArchetypeStorage = struct {
@@ -44,19 +45,21 @@ components_per_archetype: std.ArrayList(Sorted([]const ComponentId)),
 queries_hash: std.AutoHashMap(u64, std.ArrayList(CacheEntry)),
 allocator: std.mem.Allocator,
 idprovider: utils.IdProvider,
+vtable_storage: *VTableStorage,
 
 const CacheEntry = struct {
     components: []const ComponentId,
     archetypes: []const usize,
 };
 
-pub fn init(allocator: std.mem.Allocator, idprovider: utils.IdProvider) !Self {
+pub fn init(allocator: std.mem.Allocator, idprovider: utils.IdProvider, vtable_storage: *VTableStorage) !Self {
     return .{
         .archetypes = .init(allocator),
         .components_per_archetype = .init(allocator),
         .allocator = allocator,
         .queries_hash = .init(allocator),
         .idprovider = idprovider,
+        .vtable_storage = vtable_storage,
     };
 }
 
@@ -421,33 +424,41 @@ pub fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
 }
 
 pub fn createWrapper(self: *Self, comptime Component: type, cptr: *Component) !ComponentWrapper {
-    const compDeinit: ComponentDeinit = if (comptime std.meta.hasMethod(Component, "deinit"))
-        @ptrCast(&Component.deinit)
-    else
-        @ptrCast(&emptyDeinit);
+    const id = utils.dynamicTypeId(Component, self.idprovider);
+    const vtable = if (self.vtable_storage.get(id)) |vtable| brk: {
+        std.debug.print("Vtable exists for {s}\n", .{@typeName(Component)});
+        break :brk vtable;
+    } else brk: {
+        std.debug.print("Vtable does not exist for {s}\n", .{@typeName(Component)});
+        const compDeinit: ComponentDeinit = if (comptime std.meta.hasMethod(Component, "deinit"))
+            @ptrCast(&Component.deinit)
+        else
+            @ptrCast(&emptyDeinit);
 
-    const compLuaPush: ?ComponentLuaPush = if (comptime std.meta.hasFn(Component, "luaPush"))
-        @ptrCast(&Component.luaPush)
-    else
-        null;
-    const wrapperFromLua: ?ComponentFromLua = if (comptime std.meta.hasFn(Component, "wrapperFromLua"))
-        @ptrCast(&Component.wrapperFromLua)
-    else
-        null;
-    const wrapped: ComponentWrapper = .{
-        .pointer = @ptrCast(cptr),
-        .vtable = .{
+        const compLuaPush: ?ComponentLuaPush = if (comptime std.meta.hasFn(Component, "luaPush"))
+            @ptrCast(&Component.luaPush)
+        else
+            null;
+        const wrapperFromLua: ?ComponentFromLua = if (comptime std.meta.hasFn(Component, "wrapperFromLua"))
+            @ptrCast(&Component.wrapperFromLua)
+        else
+            null;
+        const vtable: ComponentWrapper.VTable = .{
             .alignment = @alignOf(Component),
             .size = @sizeOf(Component),
-            .component_id = utils.dynamicTypeId(Component, self.idprovider),
+            .component_id = id,
             .name = Component.comp_name,
             .deinit = compDeinit,
             .free = componentFree(Component),
             .luaPush = compLuaPush,
             .fromLua = wrapperFromLua,
-        },
+        };
+        break :brk try self.vtable_storage.new(id, vtable);
     };
-    return wrapped;
+    return .{
+        .pointer = @ptrCast(cptr),
+        .vtable = vtable,
+    };
 }
 
 pub fn deinit(self: *Self) void {

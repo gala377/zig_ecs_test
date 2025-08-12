@@ -17,6 +17,7 @@ const Entity = @import("entity.zig");
 const EntityId = @import("scene.zig").EntityId;
 const EntityStorage = @import("entity_storage.zig");
 const ExportLua = @import("component.zig").ExportLua;
+const VTableStorage = @import("comp_vtable_storage.zig");
 const LuaAccessibleOpaqueComponent = @import("dynamic_query.zig").LuaAccessibleOpaqueComponent;
 const LuaSystem = @import("lua_system.zig");
 const PtrTuple = @import("utils.zig").PtrTuple;
@@ -104,11 +105,14 @@ pub const Game = struct {
     global_entity_storage: EntityStorage,
     seen_components: std.AutoHashMap(u64, []const u8),
     idprovider: *SimpleIdProvider,
+    vtable_storage: *VTableStorage,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
         const state = try lua.State.init(allocator);
-        var id_provider = try allocator.create(SimpleIdProvider);
+        const id_provider = try allocator.create(SimpleIdProvider);
         id_provider.* = SimpleIdProvider{};
+        const vtable_storage = try allocator.create(VTableStorage);
+        vtable_storage.* = VTableStorage.init(allocator);
         return .{
             .allocator = allocator,
             .lua_state = state,
@@ -118,10 +122,11 @@ pub const Game = struct {
             .systems = .init(allocator),
             .deffered_systems = .init(allocator),
             .current_scene = null,
-            .global_entity_storage = try EntityStorage.init(allocator, id_provider.idprovider()),
+            .global_entity_storage = try EntityStorage.init(allocator, id_provider.idprovider(), vtable_storage),
             .lua_systems = .init(allocator),
             .seen_components = .init(allocator),
             .idprovider = id_provider,
+            .vtable_storage = vtable_storage,
         };
     }
 
@@ -194,7 +199,7 @@ pub const Game = struct {
     }
 
     pub fn newScene(self: *Self) !Scene {
-        return .init(self.newId(), self.idprovider.idprovider(), self.allocator);
+        return .init(self.newId(), self.idprovider.idprovider(), self.allocator, self.vtable_storage);
     }
 
     pub fn dynamicQueryScopeOpts(self: *Self, components: []const ComponentId, options: DynamicScopeOptions) !JoinedDynamicScope {
@@ -342,6 +347,8 @@ pub const Game = struct {
         }
         self.seen_components.deinit();
         self.allocator.destroy(self.idprovider);
+        self.vtable_storage.deinit();
+        self.allocator.destroy(self.vtable_storage);
     }
 
     pub fn newId(self: *Self) usize {

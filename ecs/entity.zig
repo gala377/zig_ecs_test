@@ -19,8 +19,7 @@ pub fn addComponents(self: *Self, components: []ComponentWrapper) !void {
     for (components) |c| {
         const old = try self.components.fetchPut(c.vtable.component_id, c);
         if (old) |prev| {
-            _ = prev;
-            @panic("replaced already existing component");
+            std.debug.panic("Replaced already existing component {s} with {s}", .{ prev.value.vtable.name, c.vtable.name });
         }
     }
 }
