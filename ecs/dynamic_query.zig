@@ -77,22 +77,18 @@ pub const DynamicQueryIter = struct {
     sorted_component_ids: []const ComponentId,
     storage: *Storage,
     next_archetype: usize = 0,
-    current_entity_iterator: ?std.AutoHashMap(usize, Entity).ValueIterator = null,
+    current_entity_iterator_pos: usize = 0,
+    current_entity_iterator: []Entity = &.{},
     allocator: std.mem.Allocator,
     cache: []const usize,
 
     pub fn next(self: *Self) ?[]LuaAccessibleOpaqueComponent {
-        if (self.current_entity_iterator) |*it| {
-            if (it.next()) |entity| {
-                return self.getComponentsFromEntity(entity);
-            }
-            // iterator ended
-            self.current_entity_iterator = null;
+        if (self.current_entity_iterator_pos < self.current_entity_iterator.len) {
+            const entity: *Entity = &self.current_entity_iterator[self.current_entity_iterator_pos];
+            self.current_entity_iterator_pos += 1;
+            return self.getComponentsFromEntity(entity);
         }
-        //if (self.cache) |cache| {
         return self.lookupCached(self.cache);
-        //}
-        //return self.lookupUncached();
     }
 
     fn lookupCached(self: *Self, cache: []const usize) ?[]LuaAccessibleOpaqueComponent {
@@ -103,41 +99,14 @@ pub const DynamicQueryIter = struct {
                 .archetypes
                 .items[archetype_index]
                 .entities
-                .valueIterator();
-            if (self.current_entity_iterator.?.next()) |entity| {
-                // after out value iterator runs out we have to check next arcehtypr
-                self.next_archetype += 1;
+                .values();
+            self.current_entity_iterator_pos = 0;
+            self.next_archetype += 1;
+            if (self.current_entity_iterator_pos < self.current_entity_iterator.len) {
+                const entity: *Entity = &self.current_entity_iterator[self.current_entity_iterator_pos];
+                self.current_entity_iterator_pos += 1;
                 return self.getComponentsFromEntity(entity);
             }
-            // no entities in the iterator
-            self.current_entity_iterator = null;
-            self.next_archetype += 1;
-        }
-        return null;
-    }
-
-    fn lookupUncached(self: *Self) ?[]LuaAccessibleOpaqueComponent {
-        while (self.next_archetype < self.storage.archetypes.items.len) {
-            const comps = self.storage.components_per_archetype.items[self.next_archetype];
-            if (!utils.isSubset(self.sorted_component_ids, comps)) {
-                // not a subset, check next archetype
-                self.next_archetype += 1;
-                continue;
-            }
-            self.current_entity_iterator = self
-                .storage
-                .archetypes
-                .items[self.next_archetype]
-                .entities
-                .valueIterator();
-            if (self.current_entity_iterator.?.next()) |entity| {
-                // after out value iterator runs out we have to check next arcehtype
-                self.next_archetype += 1;
-                return self.getComponentsFromEntity(entity);
-            }
-            // no entities in the iterator
-            self.current_entity_iterator = null;
-            self.next_archetype += 1;
         }
         return null;
     }

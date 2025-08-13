@@ -37,7 +37,7 @@ pub const ComponentWrapper = struct {
 
 pub const ArchetypeStorage = struct {
     components: []const ComponentId,
-    entities: std.AutoHashMap(usize, Entity),
+    entities: std.AutoArrayHashMap(usize, Entity),
 };
 
 archetypes: std.ArrayList(ArchetypeStorage),
@@ -95,7 +95,7 @@ pub fn removeEntities(self: *Self, ids: []usize) void {
                     c.vtable.free(c.pointer, self.allocator);
                 }
                 entity.components.deinit();
-                _ = archetype.entities.remove(id);
+                _ = archetype.entities.orderedRemove(id);
             }
         }
     }
@@ -219,7 +219,8 @@ pub fn QueryIter(comptime Components: anytype) type {
         component_ids: [Len]ComponentId,
         storage: *Storage,
         next_archetype: usize = 0,
-        current_entity_iterator: ?std.AutoHashMap(usize, Entity).ValueIterator = null,
+        current_entity_iterator_pos: usize = 0,
+        current_entity_iterator: []Entity = &.{},
         cache: []const usize,
         idprovider: utils.IdProvider,
 
@@ -233,17 +234,12 @@ pub fn QueryIter(comptime Components: anytype) type {
         }
 
         pub fn next(self: *Iter) ?PtrTuple(Components) {
-            if (self.current_entity_iterator) |*it| {
-                if (it.next()) |entity| {
-                    return self.getComponentsFromEntity(entity);
-                }
-                // iterator ended
-                self.current_entity_iterator = null;
+            if (self.current_entity_iterator_pos < self.current_entity_iterator.len) {
+                const entity: *Entity = &self.current_entity_iterator[self.current_entity_iterator_pos];
+                self.current_entity_iterator_pos += 1;
+                return self.getComponentsFromEntity(entity);
             }
-            // if (self.cache) |cache| {
             return self.lookupCached(self.cache);
-            // }
-            //return self.lookupUncached();
         }
 
         fn lookupCached(self: *Iter, cache: []const usize) ?PtrTuple(Components) {
@@ -254,41 +250,14 @@ pub fn QueryIter(comptime Components: anytype) type {
                     .archetypes
                     .items[archetype_index]
                     .entities
-                    .valueIterator();
-                if (self.current_entity_iterator.?.next()) |entity| {
-                    // after out value iterator runs out we have to check next arcehtypr
-                    self.next_archetype += 1;
+                    .values();
+                self.current_entity_iterator_pos = 0;
+                self.next_archetype += 1;
+                if (self.current_entity_iterator_pos < self.current_entity_iterator.len) {
+                    const entity: *Entity = &self.current_entity_iterator[self.current_entity_iterator_pos];
+                    self.current_entity_iterator_pos += 1;
                     return self.getComponentsFromEntity(entity);
                 }
-                // no entities in the iterator
-                self.current_entity_iterator = null;
-                self.next_archetype += 1;
-            }
-            return null;
-        }
-
-        fn lookupUncached(self: *Iter) ?PtrTuple(Components) {
-            while (self.next_archetype < self.storage.archetypes.items.len) {
-                const comps = self.storage.components_per_archetype.items[self.next_archetype];
-                if (!utils.isSubset(&self.component_ids, comps)) {
-                    // not a subset, check next archetype
-                    self.next_archetype += 1;
-                    continue;
-                }
-                self.current_entity_iterator = self
-                    .storage
-                    .archetypes
-                    .items[self.next_archetype]
-                    .entities
-                    .valueIterator();
-                if (self.current_entity_iterator.?.next()) |entity| {
-                    // after out value iterator runs out we have to check next arcehtypr
-                    self.next_archetype += 1;
-                    return self.getComponentsFromEntity(entity);
-                }
-                // no entities in the iterator
-                self.current_entity_iterator = null;
-                self.next_archetype += 1;
             }
             return null;
         }
@@ -426,10 +395,8 @@ pub fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
 pub fn createWrapper(self: *Self, comptime Component: type, cptr: *Component) !ComponentWrapper {
     const id = utils.dynamicTypeId(Component, self.idprovider);
     const vtable = if (self.vtable_storage.get(id)) |vtable| brk: {
-        std.debug.print("Vtable exists for {s}\n", .{@typeName(Component)});
         break :brk vtable;
     } else brk: {
-        std.debug.print("Vtable does not exist for {s}\n", .{@typeName(Component)});
         const compDeinit: ComponentDeinit = if (comptime std.meta.hasMethod(Component, "deinit"))
             @ptrCast(&Component.deinit)
         else
@@ -465,8 +432,8 @@ pub fn deinit(self: *Self) void {
     self.components_per_archetype.deinit();
     for (self.archetypes.items) |*archetype| {
         self.allocator.free(archetype.components);
-        var it = archetype.entities.valueIterator();
-        while (it.next()) |entity| {
+        const it = archetype.entities.values();
+        for (it) |*entity| {
             entity.deinit(self.allocator);
         }
         archetype.entities.deinit();
