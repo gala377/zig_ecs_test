@@ -1,7 +1,16 @@
 const std = @import("std");
+const component_prefix = @import("build_options").components_prefix;
 const lua = @import("lua_lib");
 const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
 const ComponentId = @import("component.zig").ComponentId;
+const component = @import("component.zig");
+
+pub const EntityId = struct {
+    pub usingnamespace component.LibComponent(component_prefix, EntityId);
+    pub usingnamespace component.ExportLua(EntityId, .{});
+    scene_id: usize,
+    entity_id: usize,
+};
 
 const Self = @This();
 

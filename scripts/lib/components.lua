@@ -8,10 +8,11 @@
 game_build = {}
 logic = {}
 ecs = {}
+ecs.entity = {}
+ecs.runtime = {}
+ecs.runtime.components = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
-ecs.game = {}
-ecs.scene = {}
 
 -- END NAMESPACES
 

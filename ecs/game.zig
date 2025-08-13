@@ -14,7 +14,7 @@ const DynamicQueryIter = @import("dynamic_query.zig").DynamicQueryIter;
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 const DynamicScopeOptions = @import("entity_storage.zig").DynamicScopeOptions;
 const Entity = @import("entity.zig");
-const EntityId = @import("scene.zig").EntityId;
+const EntityId = Entity.EntityId;
 const EntityStorage = @import("entity_storage.zig");
 const ExportLua = @import("component.zig").ExportLua;
 const VTableStorage = @import("comp_vtable_storage.zig");
@@ -23,11 +23,15 @@ const LuaSystem = @import("lua_system.zig");
 const PtrTuple = @import("utils.zig").PtrTuple;
 const Resource = @import("resource.zig").Resource;
 const Scene = @import("scene.zig").Scene;
-const commands = @import("commands.zig");
-const commands_system = @import("commands_system.zig");
+const commands = @import("runtime/commands.zig");
+const commands_system = @import("runtime/commands_system.zig");
 const component_mod = @import("component.zig");
 const mksystem = @import("system.zig").system;
 const utils = @import("utils.zig");
+const QueryIter = @import("query.zig").QueryIter;
+
+const GameActions = @import("runtime/components.zig").GameActions;
+const LuaRuntime = @import("runtime/components.zig").LuaRuntime;
 
 pub const Size = struct {
     width: i32,
@@ -361,31 +365,6 @@ pub const Game = struct {
     }
 };
 
-pub const GameActions = struct {
-    pub usingnamespace Component(component_prefix, GameActions);
-    pub usingnamespace ExportLua(GameActions, .{});
-    should_close: bool,
-    test_field: ?isize = null,
-    test_field_2: ?f64 = null,
-    log: [][]const u8,
-    allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *GameActions, allocator: std.mem.Allocator) void {
-        _ = allocator;
-        for (self.log) |log| {
-            self.allocator.free(log);
-        }
-        if (self.log.len > 0) {
-            self.allocator.free(self.log);
-        }
-    }
-};
-
-pub const LuaRuntime = struct {
-    pub usingnamespace Component(component_prefix, LuaRuntime);
-    lua: *lua.State,
-};
-
 pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
     _ = try game.addResource(GameActions{ .should_close = false, .allocator = game.allocator, .log = &.{} });
     _ = try game.addResource(LuaRuntime{ .lua = &game.lua_state });
@@ -411,7 +390,7 @@ fn applyGameActions(game: *Game) void {
 }
 
 pub fn Query(comptime components: anytype) type {
-    const InnerIter = EntityStorage.QueryIter(components);
+    const InnerIter = QueryIter(components);
     return struct {
         const ThisIter = @This();
         pub const ComponentTypes = components;

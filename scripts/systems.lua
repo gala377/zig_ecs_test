@@ -1,12 +1,12 @@
 ---@alias Button ecs.imgui.components.Button
----@alias GameActions ecs.game.GameActions
+---@alias GameActions ecs.runtime.components.GameActions
 ---@alias ButtonClose logic.ButtonClose
 
 local query = require("scripts.lib.query")
 local system = require("scripts.lib.system")
 
 local Button = ecs.imgui.components.Button
-local GameActions = ecs.game.GameActions
+local GameActions = ecs.runtime.components.GameActions
 local ButtonClose = logic.ButtonClose
 local ButtonOpen = logic.ButtonOpen
 

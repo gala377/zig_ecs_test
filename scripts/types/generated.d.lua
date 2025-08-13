@@ -8,30 +8,31 @@
 game_build = {}
 logic = {}
 ecs = {}
+ecs.entity = {}
+ecs.runtime = {}
+ecs.runtime.components = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
-ecs.game = {}
-ecs.scene = {}
 
 -- END NAMESPACES
 
 -- START TYPES
 
----@class ecs.game.GameActions
+---@class ecs.runtime.components.GameActions
 ---@field should_close boolean
 ---@field test_field integer?
 ---@field test_field_2 number?
 ---@field log Slice<string>
 ---@field private component_hash integer
 ---@field private metatable_name string
-ecs.game.GameActions = {}
+ecs.runtime.components.GameActions = {}
 
----@class ecs.scene.EntityId
+---@class ecs.entity.EntityId
 ---@field scene_id integer
 ---@field entity_id integer
 ---@field private component_hash integer
 ---@field private metatable_name string
-ecs.scene.EntityId = {}
+ecs.entity.EntityId = {}
 
 ---@class ecs.imgui.components.Button
 ---@field title string

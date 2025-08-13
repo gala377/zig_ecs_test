@@ -1,28 +1,12 @@
 const std = @import("std");
 
 const Entity = @import("entity.zig");
+const EntityId = Entity.EntityId;
 const ExportLua = @import("component.zig").ExportLua;
 const EntityStorage = @import("entity_storage.zig");
 const Component = @import("component.zig").LibComponent;
 const utils = @import("utils.zig");
 const VTableStorage = @import("comp_vtable_storage.zig");
-
-pub const ComponentWrapper = struct {
-    pointer: *anyopaque,
-    size: usize,
-    alignment: usize,
-    name: []const u8,
-    deinit: ComponentDeinit,
-};
-
-pub const EntityId = struct {
-    pub usingnamespace Component("ecs", EntityId);
-    pub usingnamespace ExportLua(EntityId, .{});
-    scene_id: usize,
-    entity_id: usize,
-};
-
-pub const ComponentDeinit = *const fn (*anyopaque, sceneAllocator: std.mem.Allocator) void;
 
 pub const Scene = struct {
     const Self = @This();
@@ -65,8 +49,3 @@ pub const Scene = struct {
         return self.scene_allocator;
     }
 };
-
-fn emptyDeinit(ptr: *anyopaque, allocator: std.mem.Allocator) void {
-    _ = ptr;
-    _ = allocator;
-}

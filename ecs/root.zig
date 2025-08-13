@@ -1,5 +1,6 @@
 pub const component = @import("component.zig");
 pub const Component = component.Component;
+pub const ExportLua = component.ExportLua;
 
 pub const entity = @import("entity.zig");
 
@@ -11,7 +12,7 @@ pub const imgui = @import("imgui/root.zig");
 
 pub const scene = @import("scene.zig");
 pub const Scene = scene.Scene;
-pub const EntityId = scene.EntityId;
+pub const EntityId = entity.EntityId;
 
 pub const system = @import("system.zig").system;
 
@@ -19,5 +20,6 @@ pub const utils = @import("utils.zig");
 
 pub const DeclarationGenerator = @import("declaration_generator.zig");
 pub const Resource = @import("resource.zig").Resource;
-pub const Commands = @import("commands.zig").Commands;
-pub const commands = @import("commands.zig");
+pub const Commands = @import("runtime/commands.zig").Commands;
+pub const commands = @import("runtime/commands.zig");
+pub const runtime = @import("runtime/root.zig");

@@ -1,16 +1,17 @@
 const std = @import("std");
 
 const ecs = @import("ecs");
+const lua = @import("lua_lib");
+
 const Component = ecs.Component;
 const Game = ecs.Game;
-const GameActions = ecs.game.GameActions;
-const LuaRuntime = ecs.game.LuaRuntime;
+const GameActions = ecs.runtime.components.GameActions;
+const LuaRuntime = ecs.runtime.components.LuaRuntime;
 const Query = ecs.Query;
 const system = ecs.system;
 const imgui = ecs.imgui;
 const Button = imgui.components.Button;
 const Vec2 = ecs.utils.Vec2;
-const lua = @import("lua_lib");
 const Resource = ecs.Resource;
 const ExportLua = ecs.component.ExportLua;
 const scene = ecs.scene;
