@@ -10,9 +10,27 @@
 
 ## What next
 
-- exposing Commands to lua [[#Exposing constructors to lua]]
 - creating components/entities in lua [[#Exposing constructors to lua]]
-- Lua defined components - this one is hard and not sure how to do this yet
+- exposing Commands to lua [[#Exposing constructors to lua]]
+- Lua defined components - this one is hard and not sure how to do this yet.
+  Kinda do actually, we can have a LuaComponent, that gets its id from lua and not from 
+  its type. Its from lua implementation would be just getting the ref and toLua would 
+  just be pushing the ref.
+
+- Events - not sure how this one would work but you know. Everything it its time.
+
+### Events
+
+We can have generic Event(T) type that is a component. It will be added as a global entity
+like resources. It will be just an array list of events i guess.
+Then we need to expose EventReader(T) and EventWriter(T).
+In general EventWriter(T) can be a resource and then we have a system
+s(Event(T), EventWriter(T)) that copies events from event writer to event buffer.
+
+EventReader would need to be handled by runtime, it would need to get Event(T) and then 
+just create instance of EventReader { buff: event.buff, curr: 0 };
+
+Something like that. It is a specific use case of a ComponentProxy/MappedComponent.
 
 ### Exposing more types to lua
 

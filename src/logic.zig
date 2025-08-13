@@ -7,6 +7,8 @@ const Component = ecs.Component;
 const Game = ecs.Game;
 const GameActions = ecs.runtime.components.GameActions;
 const LuaRuntime = ecs.runtime.components.LuaRuntime;
+const EventReader = ecs.runtime.components.EventReader;
+const EventWriter = ecs.runtime.components.EventWriter;
 const Query = ecs.Query;
 const system = ecs.system;
 const imgui = ecs.imgui;
@@ -25,6 +27,7 @@ pub fn installMainLogic(game: *Game) !void {
         system(spawn_on_click),
         system(read_new_entities),
         system(remove_last_entity),
+        system(read_events),
     });
     game.exportComponent(ButtonOpen);
     game.exportComponent(ButtonClose);
@@ -98,7 +101,10 @@ pub fn installMainLogic(game: *Game) !void {
         },
         ButtonRemoveLast{},
     });
+    try game.addEvent(MyEvent);
 }
+
+pub const MyEvent = usize;
 
 pub const TestItem = struct {
     pub usingnamespace Component(TestItem);
@@ -136,7 +142,12 @@ pub fn read_new_entities(entities: *Query(.{TestItem})) void {
     }
 }
 
-pub fn remove_last_entity(commands: Commands, buttons: *Query(.{ Button, ButtonRemoveLast }), entities: *Query(.{ EntityId, TestItem })) void {
+pub fn remove_last_entity(
+    commands: Commands,
+    buttons: *Query(.{ Button, ButtonRemoveLast }),
+    entities: *Query(.{ EntityId, TestItem }),
+    event: EventWriter(MyEvent),
+) void {
     const button: *Button, _ = buttons.single();
     if (button.clicked) {
         var last: ?EntityId = null;
@@ -149,8 +160,15 @@ pub fn remove_last_entity(commands: Commands, buttons: *Query(.{ Button, ButtonR
             }
         }
         if (last) |id| {
+            event.add(id.entity_id);
             commands.get().removeEntity(id) catch @panic("oom");
         }
+    }
+}
+
+pub fn read_events(events: *EventReader(MyEvent)) void {
+    while (events.next()) |e| {
+        std.log.info("Got event that entity {} got removed", .{e});
     }
 }
 

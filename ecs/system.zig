@@ -15,12 +15,28 @@ pub fn system(comptime F: anytype) System {
             var queries: std.meta.ArgsTuple(@TypeOf(F)) = undefined;
             inline for (params, 0..) |p, index| {
                 const para_t = p.type.?;
-                if (comptime @typeInfo(para_t) == .@"struct" and @hasDecl(para_t, "is_resource_marker")) {
+                if (comptime @typeInfo(para_t) == .@"struct" and
+                    @hasDecl(para_t, "is_resource_proxy"))
+                {
+                    var query = game.query(.{para_t.MappedResource});
+                    const resource = query.single()[0];
+                    queries[index] = para_t.fromResource(resource);
+                } else if (comptime @typeInfo(para_t) == .pointer and
+                    @typeInfo(@typeInfo(para_t).pointer.child) == .@"struct" and
+                    @hasDecl(@typeInfo(para_t).pointer.child, "is_resource_proxy"))
+                {
+                    var query = game.query(.{@typeInfo(para_t).pointer.child.MappedResource});
+                    const resource = query.single()[0];
+                    var mapped = @typeInfo(para_t).pointer.child.fromResource(resource);
+                    queries[index] = &mapped;
+                } else if (comptime @typeInfo(para_t) == .@"struct" and
+                    @hasDecl(para_t, "is_resource_marker"))
+                {
                     var query = game.query(.{para_t.component_t});
                     queries[index] = .init(query.single()[0]);
                 } else {
                     if (@typeInfo(para_t) != .pointer) {
-                        @compileError("Queries have to be accepted by pointer");
+                        @compileError("Queries have to be accepted by pointer " ++ @typeName(para_t));
                     }
                     const unpack_pointer = @typeInfo(para_t).pointer.child;
                     const component_types = unpack_pointer.ComponentTypes;

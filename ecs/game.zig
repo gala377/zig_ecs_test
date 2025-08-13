@@ -6,6 +6,7 @@ const clua = lua.clib;
 const rg = @import("raygui");
 const rl = @import("raylib");
 
+const runtime = @import("runtime/components.zig");
 const Component = @import("component.zig").LibComponent;
 const ComponentId = @import("component.zig").ComponentId;
 const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
@@ -138,7 +139,7 @@ pub const Game = struct {
         try self.installRuntime();
 
         rl.setConfigFlags(.{ .window_highdpi = true });
-        //rl.setTargetFPS(self.options.window.targetFps);
+        rl.setTargetFPS(self.options.window.targetFps);
         rl.initWindow(self.options.window.size.width, self.options.window.size.height, self.options.window.title);
         defer rl.closeWindow();
 
@@ -147,7 +148,6 @@ pub const Game = struct {
         while (!self.should_close) : (self.should_close = rl.windowShouldClose() or self.should_close) {
             // const start = try std.time.Instant.now();
             rl.beginDrawing();
-
             for (self.systems.items) |sys| {
                 sys(self);
             }
@@ -156,10 +156,15 @@ pub const Game = struct {
                     @panic("could not run lua system");
                 };
             }
+            const fps = rl.getFPS();
+            const frame_time = rl.getFrameTime();
+            var buf: [10000]u8 = undefined;
+            const numAsString = try std.fmt.bufPrintZ(&buf, "FPS: {:5}, frame time: {:.3}", .{ fps, frame_time });
+            rl.drawText(numAsString, 0, 0, 16, rl.Color.white);
+
             for (self.deffered_systems.items) |sys| {
                 sys(self);
             }
-
             rl.clearBackground(.black);
             rl.endDrawing();
 
@@ -223,6 +228,14 @@ pub const Game = struct {
 
     pub fn addResource(self: *Self, resource: anytype) !void {
         _ = try self.newGlobalEntity(.{resource});
+    }
+
+    pub fn addEvent(self: *Self, comptime T: type) !void {
+        _ = try self.newGlobalEntity(.{
+            runtime.EventBuffer(T){ .allocator = self.allocator, .events = &.{} },
+            runtime.EventWriterBuffer(T){ .events = .init(self.allocator) },
+        });
+        try self.addDefferedSystem(runtime.eventSystem(T));
     }
 
     pub fn addSystem(self: *Self, system: System) !void {
