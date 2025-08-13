@@ -15,7 +15,7 @@ pub fn system(comptime F: anytype) System {
             var queries: std.meta.ArgsTuple(@TypeOf(F)) = undefined;
             inline for (params, 0..) |p, index| {
                 const para_t = p.type.?;
-                if (@typeInfo(para_t) == .@"struct" and @hasDecl(para_t, "is_resource_marker")) {
+                if (comptime @typeInfo(para_t) == .@"struct" and @hasDecl(para_t, "is_resource_marker")) {
                     var query = game.query(.{para_t.component_t});
                     queries[index] = .init(query.single()[0]);
                 } else {
