@@ -40,6 +40,7 @@ pub fn EventBuffer(comptime T: type) type {
     return struct {
         const Self = @This();
         pub usingnamespace Component(component_prefix, Self);
+        pub usingnamespace ExportLua(Self, .{"allocator"});
 
         events: []T,
         allocator: std.mem.Allocator,

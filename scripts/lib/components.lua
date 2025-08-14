@@ -6,13 +6,13 @@
 -- START NAMESPACES
 
 game_build = {}
-logic = {}
 ecs = {}
-ecs.entity = {}
 ecs.runtime = {}
 ecs.runtime.components = {}
+ecs.entity = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
+logic = {}
 
 -- END NAMESPACES
 
@@ -27,6 +27,6 @@ ecs.imgui.components = {}
 
 return {
 	game_build = game_build,
-	logic = logic,
 	ecs = ecs,
+	logic = logic,
 }

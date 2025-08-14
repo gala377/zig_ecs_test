@@ -42,6 +42,7 @@ fn generate(allocator: std.mem.Allocator) !void {
         logic.ButtonClose,
         logic.ButtonOpen,
     });
+    try generator.registerEventForBuild(logic.MyEvent);
 
     try generator.generate();
 }

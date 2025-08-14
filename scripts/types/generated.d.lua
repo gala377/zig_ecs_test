@@ -6,13 +6,13 @@
 -- START NAMESPACES
 
 game_build = {}
-logic = {}
 ecs = {}
-ecs.entity = {}
 ecs.runtime = {}
 ecs.runtime.components = {}
+ecs.entity = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
+logic = {}
 
 -- END NAMESPACES
 
@@ -57,6 +57,12 @@ logic.ButtonClose = {}
 ---@field private component_hash integer
 ---@field private metatable_name string
 logic.ButtonOpen = {}
+
+---@class ecs.runtime.components.EventBuffer(usize)
+---@field events Slice<integer>
+---@field private component_hash integer
+---@field private metatable_name string
+ecs.runtime.components.EventBuffer(usize) = {}
 
 
 -- END TYPES

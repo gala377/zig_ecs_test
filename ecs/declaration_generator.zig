@@ -1,5 +1,6 @@
 const std = @import("std");
 const Self = @This();
+const EventBuffer = @import("runtime/components.zig").EventBuffer;
 
 comp_names: std.StringHashMap(void),
 generators: std.ArrayList(*const fn (std.io.AnyWriter) anyerror!void),
@@ -33,6 +34,10 @@ pub fn registerComponentForBuild(self: *Self, comptime Comp: type) !void {
         std.debug.print("Component {s} is already registered\n", .{Comp.comp_name});
         return error.componentAlreadyRegistered;
     }
+}
+
+pub fn registerEventForBuild(self: *Self, comptime T: type) !void {
+    return self.registerComponentForBuild(EventBuffer(T));
 }
 
 fn emitTypesHeader(writer: std.io.AnyWriter) anyerror!void {

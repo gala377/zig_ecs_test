@@ -11,26 +11,22 @@ local ButtonClose = logic.ButtonClose
 local ButtonOpen = logic.ButtonOpen
 
 ---@param button Query<[Button, ButtonClose]>
----@param actions Query<[GameActions]>
+---@param actions GameActions
 local function close_run(button, actions)
 	local close_button, _ = query.single(button)
 	---@cast close_button Button
 	if close_button.clicked then
-		local game_actions = query.single(actions)
-		---@cast game_actions GameActions
-		game_actions.should_close = true
+		actions.should_close = true
 	end
 end
 
 ---@param buttons Query<[Button]>
----@param actions Query<[GameActions]>
+---@param actions GameActions
 local function click_run(buttons, actions)
 	for button in query.iter(buttons) do
 		---@cast button Button
 		if button.clicked then
-			local ga = query.single(actions)
-			---@cast ga GameActions
-			ga.test_field = (ga.test_field or 0) + 1
+			actions.test_field = (actions.test_field or 0) + 1
 		end
 	end
 end
@@ -46,7 +42,7 @@ local function change_title(buttons)
 end
 
 return {
-	system.new(click_run, "click logger"):query(Button):query(GameActions),
-	system.new(close_run, "close on click"):query(Button, ButtonClose):query(GameActions),
-	system.new(change_title, "change button title"):query(Button, ButtonOpen),
+	system.new(click_run, "click logger"):arguments({ Button }, GameActions),
+	system.new(close_run, "close on click"):arguments({ Button, ButtonClose }, GameActions),
+	system.new(change_title, "change button title"):arguments { Button, ButtonOpen },
 }
