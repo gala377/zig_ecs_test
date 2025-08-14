@@ -28,7 +28,12 @@ pub fn installMainLogic(game: *Game) !void {
         system(read_new_entities),
         system(remove_last_entity),
         system(read_events),
+        system(setup_circle),
+        system(move_player_marker),
     });
+    try game.addDefferedSystem(system(finish_run));
+    try game.addResource(RunOnce{});
+
     game.exportComponent(ButtonOpen);
     game.exportComponent(ButtonClose);
     try game.addLuaSystems("scripts/systems.lua");
@@ -101,6 +106,7 @@ pub fn installMainLogic(game: *Game) !void {
         },
         ButtonRemoveLast{},
     });
+    try ecs.shapes.installShapes(game);
     try game.addEvent(MyEvent);
 }
 
@@ -236,4 +242,43 @@ fn call_ref(
         lstate.callDontPop(1, 1);
         lstate.pop() catch {};
     }
+}
+
+const Circle = ecs.shapes.Circle;
+const Color = ecs.core.Color;
+const Style = ecs.core.Style;
+const Position = ecs.core.Position;
+
+pub const RunOnce = struct {
+    pub usingnamespace Component(RunOnce);
+    already_run: bool = false,
+};
+
+pub const PlayerMarker = struct {
+    pub usingnamespace Component(PlayerMarker);
+};
+
+fn setup_circle(cond: Resource(RunOnce), commands: Commands) void {
+    if (cond.get().already_run) {
+        return;
+    }
+    _ = commands.get().newSceneEntity(.{
+        Circle{ .radius = 50.0 },
+        Position{ .x = 1080.0 / 2, .y = 720.0 / 2 },
+        Style{
+            .background_color = Color.white,
+        },
+        PlayerMarker{},
+    }) catch @panic("failed to spawn entity");
+}
+
+fn move_player_marker(player: *Query(.{ PlayerMarker, Position })) void {
+    while (player.next()) |components| {
+        _, const position: *Position = components;
+        position.x += 1.0;
+    }
+}
+
+fn finish_run(cond: Resource(RunOnce)) void {
+    cond.get().already_run = true;
 }

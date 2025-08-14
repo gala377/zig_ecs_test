@@ -23,3 +23,6 @@ pub const Resource = @import("resource.zig").Resource;
 pub const Commands = @import("runtime/commands.zig").Commands;
 pub const commands = @import("runtime/commands.zig");
 pub const runtime = @import("runtime/root.zig");
+
+pub const shapes = @import("shapes/root.zig");
+pub const core = @import("core/root.zig");
