@@ -5,14 +5,13 @@
 
 -- START NAMESPACES
 
-game_build = {}
+logic = {}
 ecs = {}
 ecs.runtime = {}
 ecs.runtime.components = {}
 ecs.entity = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
-logic = {}
 
 -- END NAMESPACES
 
@@ -20,8 +19,6 @@ logic = {}
 
 ---@class ecs.runtime.components.GameActions
 ---@field should_close boolean
----@field test_field integer?
----@field test_field_2 number?
 ---@field log Slice<string>
 ---@field private component_hash integer
 ---@field private metatable_name string
@@ -41,12 +38,6 @@ ecs.entity.EntityId = {}
 ---@field private component_hash integer
 ---@field private metatable_name string
 ecs.imgui.components.Button = {}
-
----@class game_build.TestComponent
----@field test_field boolean
----@field private component_hash integer
----@field private metatable_name string
-game_build.TestComponent = {}
 
 ---@class logic.ButtonClose
 ---@field private component_hash integer

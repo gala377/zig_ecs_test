@@ -24,20 +24,12 @@ pub fn main() !void {
     try generate(gpa.allocator());
 }
 
-const TestComponent = struct {
-    pub const component_info = Component(TestComponent);
-    pub const lua_info = ExportLua(TestComponent, .{});
-
-    test_field: bool,
-};
-
 fn generate(allocator: std.mem.Allocator) !void {
     var generator = DecalartionGenerator.init("scripts/types/generated.d.lua", "scripts/lib/components.lua", allocator);
     defer generator.deinit();
 
     try ecs.game.registerDefaultComponentsForBuild(&generator);
     try imgui.exportBuild(&generator);
-    try generator.registerComponentForBuild(TestComponent);
     try generator.registerComponentsForBuild(.{
         logic.ButtonClose,
         logic.ButtonOpen,

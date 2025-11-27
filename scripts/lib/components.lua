@@ -5,28 +5,25 @@
 
 -- START NAMESPACES
 
-game_build = {}
+logic = {}
 ecs = {}
 ecs.runtime = {}
 ecs.runtime.components = {}
 ecs.entity = {}
 ecs.imgui = {}
 ecs.imgui.components = {}
-logic = {}
 
 -- END NAMESPACES
 
 -- START TYPES
 
-
 -- END TYPES
-
 
 ---@diagnostic enable: unused-local
 ---@diagnostic enable: missing-fields
 
 return {
-	game_build = game_build,
-	ecs = ecs,
 	logic = logic,
+	ecs = ecs,
 }
+

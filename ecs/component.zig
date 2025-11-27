@@ -286,7 +286,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         }
 
         pub fn luaGenerateStubFile(writer: std.io.AnyWriter) !void {
-            try writer.print("---@class {s}\n", .{T.comp_name});
+            try writer.print("---@class {s}\n", .{@TypeOf(T.component_info).comp_name});
             const fields = std.meta.fields(T);
             inline for (fields) |f| {
                 if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
@@ -295,7 +295,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             }
             try writer.writeAll("---@field private component_hash integer\n");
             try writer.writeAll("---@field private metatable_name string\n");
-            try writer.print("{s} = {{}}\n\n", .{T.comp_name});
+            try writer.print("{s} = {{}}\n\n", .{@TypeOf(T.component_info).comp_name});
         }
 
         pub fn exportId(state: *clua.lua_State, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !void {

@@ -29,9 +29,9 @@ pub fn registerComponentsForBuild(self: *Self, comptime Comps: anytype) !void {
     }
 }
 pub fn registerComponentForBuild(self: *Self, comptime Comp: type) !void {
-    try self.generators.append(@ptrCast(&Comp.luaGenerateStubFile));
-    if (try self.comp_names.fetchPut(Comp.comp_name, {})) |_| {
-        std.debug.print("Component {s} is already registered\n", .{Comp.comp_name});
+    try self.generators.append(@ptrCast(&@TypeOf(Comp.lua_info).luaGenerateStubFile));
+    if (try self.comp_names.fetchPut(@TypeOf(Comp.component_info).comp_name, {})) |_| {
+        std.debug.print("Component {s} is already registered\n", .{@TypeOf(Comp.component_info).comp_name});
         return error.componentAlreadyRegistered;
     }
 }
