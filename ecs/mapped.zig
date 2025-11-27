@@ -16,9 +16,12 @@
 //      };
 // }
 //
-pub fn ResourceProxy(comptime T: type) type {
+pub fn ResourceProxy(comptime T: type) ResourceProxyInfo(T) {
+    return .{};
+}
+
+pub fn ResourceProxyInfo(comptime T: type) type {
     return struct {
         pub const MappedResource = T;
-        pub const is_resource_proxy = void{};
     };
 }

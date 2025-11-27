@@ -10,12 +10,12 @@ const system = @import("../system.zig").system;
 const std = @import("std");
 
 pub const Circle = struct {
-    pub usingnamespace Component(component_prefix, Circle);
+    pub const component_info = Component(component_prefix, Circle);
     radius: f32,
 };
 
 pub const Rectangle = struct {
-    pub usingnamespace Component(component_prefix, Rectangle);
+    pub const component_info = Component(component_prefix, Rectangle);
     width: f32,
     height: f32,
 };

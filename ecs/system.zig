@@ -16,16 +16,16 @@ pub fn system(comptime F: anytype) System {
             inline for (params, 0..) |p, index| {
                 const para_t = p.type.?;
                 if (comptime @typeInfo(para_t) == .@"struct" and
-                    @hasDecl(para_t, "is_resource_proxy"))
+                    @hasDecl(para_t, "resource_proxy_info"))
                 {
-                    var query = game.query(.{para_t.MappedResource});
+                    var query = game.query(.{@TypeOf(para_t.resource_proxy_info).MappedResource});
                     const resource = query.single()[0];
                     queries[index] = para_t.fromResource(resource);
                 } else if (comptime @typeInfo(para_t) == .pointer and
                     @typeInfo(@typeInfo(para_t).pointer.child) == .@"struct" and
-                    @hasDecl(@typeInfo(para_t).pointer.child, "is_resource_proxy"))
+                    @hasDecl(@typeInfo(para_t).pointer.child, "resource_proxy_info"))
                 {
-                    var query = game.query(.{@typeInfo(para_t).pointer.child.MappedResource});
+                    var query = game.query(.{@TypeOf(@typeInfo(para_t).pointer.child.resource_proxy_info).MappedResource});
                     const resource = query.single()[0];
                     var mapped = @typeInfo(para_t).pointer.child.fromResource(resource);
                     queries[index] = &mapped;

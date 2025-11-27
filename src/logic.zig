@@ -113,7 +113,7 @@ pub fn installMainLogic(game: *Game) !void {
 pub const MyEvent = usize;
 
 pub const TestItem = struct {
-    pub usingnamespace Component(TestItem);
+    pub const component_info = Component(TestItem);
 
     index: usize,
     already_logged: bool = false,
@@ -179,25 +179,25 @@ pub fn read_events(events: *EventReader(MyEvent)) void {
 }
 
 pub const ButtonSpawn = struct {
-    pub usingnamespace Component(ButtonSpawn);
+    pub const component_info = Component(ButtonSpawn);
 };
 
 pub const ButtonOpen = struct {
-    pub usingnamespace Component(ButtonOpen);
-    pub usingnamespace ExportLua(ButtonOpen, .{});
+    pub const component_info = Component(ButtonOpen);
+    pub const lua_info = ExportLua(ButtonOpen, .{});
 };
 
 pub const ButtonClose = struct {
-    pub usingnamespace Component(ButtonClose);
-    pub usingnamespace ExportLua(ButtonClose, .{});
+    pub const component_info = Component(ButtonClose);
+    pub const lua_info = ExportLua(ButtonClose, .{});
 };
 
 pub const ButtonRemoveLast = struct {
-    pub usingnamespace Component(ButtonRemoveLast);
+    pub const component_info = Component(ButtonRemoveLast);
 };
 
 const ButtonLua = struct {
-    pub usingnamespace Component(ButtonLua);
+    pub const component_info = Component(ButtonLua);
     callback: lua.Ref,
 
     pub fn deinit(self: *ButtonLua) void {
@@ -237,7 +237,7 @@ fn call_ref(
         const cls_btn: *Button, _ = close_button.single();
 
         lstate.pushRef(lua_clb.callback);
-        cls_btn.luaPush(lstate.state);
+        @TypeOf(@TypeOf(cls_btn.*).lua_info).luaPush(cls_btn, lstate.state);
 
         lstate.callDontPop(1, 1);
         lstate.pop() catch {};
@@ -250,12 +250,12 @@ const Style = ecs.core.Style;
 const Position = ecs.core.Position;
 
 pub const RunOnce = struct {
-    pub usingnamespace Component(RunOnce);
+    pub const component_info = Component(RunOnce);
     already_run: bool = false,
 };
 
 pub const PlayerMarker = struct {
-    pub usingnamespace Component(PlayerMarker);
+    pub const component_info = Component(PlayerMarker);
 };
 
 fn setup_circle(cond: Resource(RunOnce), commands: Commands) void {

@@ -4,7 +4,7 @@ const Color = @import("color.zig");
 
 const Self = @This();
 
-pub usingnamespace Component(component_prefix, Self);
+pub const component_info = Component(component_prefix, Self);
 
 background_color: ?Color = null,
 

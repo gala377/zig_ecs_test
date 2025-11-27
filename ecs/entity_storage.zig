@@ -339,19 +339,19 @@ pub fn createWrapper(self: *Self, comptime Component: type, cptr: *Component) !C
         else
             @ptrCast(&emptyDeinit);
 
-        const compLuaPush: ?ComponentLuaPush = if (comptime std.meta.hasFn(Component, "luaPush"))
-            @ptrCast(&Component.luaPush)
+        const compLuaPush: ?ComponentLuaPush = if (comptime @hasDecl(Component, "lua_info"))
+            @ptrCast(&@TypeOf(Component.lua_info).luaPush)
         else
             null;
-        const wrapperFromLua: ?ComponentFromLua = if (comptime std.meta.hasFn(Component, "wrapperFromLua"))
-            @ptrCast(&Component.wrapperFromLua)
+        const wrapperFromLua: ?ComponentFromLua = if (comptime @hasDecl(Component, "lua_info"))
+            @ptrCast(&@TypeOf(Component.lua_info).wrapperFromLua)
         else
             null;
         const vtable: ComponentWrapper.VTable = .{
             .alignment = @alignOf(Component),
             .size = @sizeOf(Component),
             .component_id = id,
-            .name = Component.comp_name,
+            .name = @TypeOf(Component.component_info).comp_name,
             .deinit = compDeinit,
             .free = componentFree(Component),
             .luaPush = compLuaPush,

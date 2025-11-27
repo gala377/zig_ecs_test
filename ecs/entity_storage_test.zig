@@ -4,11 +4,11 @@ const Storage = @import("entity_storage.zig");
 const VTableStorage = @import("comp_vtable_storage.zig");
 
 const Foo = struct {
-    pub usingnamespace Component(Foo);
+    pub const component_info = Component(Foo);
     value: usize,
 };
 const Bar = struct {
-    pub usingnamespace Component(Bar);
+    pub const component_info = Component(Bar);
     value: usize,
 };
 

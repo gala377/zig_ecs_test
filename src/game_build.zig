@@ -25,8 +25,8 @@ pub fn main() !void {
 }
 
 const TestComponent = struct {
-    pub usingnamespace Component(TestComponent);
-    pub usingnamespace ExportLua(TestComponent, .{});
+    pub const component_info = Component(TestComponent);
+    pub const lua_info = ExportLua(TestComponent, .{});
 
     test_field: bool,
 };

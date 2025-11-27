@@ -6,8 +6,8 @@ const ComponentId = @import("component.zig").ComponentId;
 const component = @import("component.zig");
 
 pub const EntityId = struct {
-    pub usingnamespace component.LibComponent(component_prefix, EntityId);
-    pub usingnamespace component.ExportLua(EntityId, .{});
+    pub const component_info = component.LibComponent(component_prefix, EntityId);
+    pub const lua_info = component.ExportLua(EntityId, .{});
     scene_id: usize,
     entity_id: usize,
 };

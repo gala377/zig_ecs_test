@@ -7,19 +7,17 @@ const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
 
 pub const ComponentId = u64;
 
-pub fn Component(comptime T: type) type {
+pub fn ComponentInfo(comptime name: []const u8) type {
     return struct {
-        pub const is_component_marker: void = void{};
-        pub const comp_name: []const u8 = @typeName(T);
+        pub const comp_name = name;
     };
 }
+pub fn Component(comptime T: type) ComponentInfo(@typeName(T)) {
+    return .{};
+}
 
-pub fn LibComponent(comptime name_prefix: []const u8, comptime T: type) type {
-    const expanded_name = name_prefix ++ "." ++ @typeName(T);
-    return struct {
-        pub const is_component_marker: void = void{};
-        pub const comp_name: []const u8 = expanded_name;
-    };
+pub fn LibComponent(comptime name_prefix: []const u8, comptime T: type) ComponentInfo(name_prefix ++ "." ++ @typeName(T)) {
+    return .{};
 }
 
 pub fn SliceProxy(comptime Slice: type) type {
@@ -137,10 +135,10 @@ pub fn SliceProxy(comptime Slice: type) type {
     };
 }
 
-/// Ignore fields has to be a tuple of strings
-pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
+pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
     return struct {
-        const MetaTableName = T.comp_name ++ "_MetaTable";
+        pub const MetaTableName = @TypeOf(T.component_info).comp_name ++ "_MetaTable";
+
         comptime {
             checkForAllocatorNeededFields();
         }
@@ -301,7 +299,7 @@ pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
         }
 
         pub fn exportId(state: *clua.lua_State, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !void {
-            const comp_name: []const u8 = T.comp_name;
+            const comp_name: []const u8 = @TypeOf(T.component_info).comp_name;
             var segments = std.mem.splitScalar(u8, comp_name, '.');
             var idx: usize = 0;
             while (segments.next()) |segment| {
@@ -344,6 +342,11 @@ pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) type {
             clua.lua_pop(state, @as(c_int, @intCast(idx)));
         }
     };
+}
+
+/// Ignore fields has to be a tuple of strings
+pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) ExportLuaInfo(T, ignore_fields) {
+    return .{};
 }
 
 fn getLuaType(comptime T: type) []const u8 {

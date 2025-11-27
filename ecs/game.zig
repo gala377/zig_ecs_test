@@ -185,8 +185,8 @@ pub const Game = struct {
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
-        Comp.registerMetaTable(self.lua_state);
-        Comp.exportId(self.lua_state.state, self.idprovider.idprovider(), self.allocator) catch {
+        @TypeOf(Comp.lua_info).registerMetaTable(self.lua_state);
+        @TypeOf(Comp.lua_info).exportId(self.lua_state.state, self.idprovider.idprovider(), self.allocator) catch {
             @panic("could not export component to lua");
         };
     }

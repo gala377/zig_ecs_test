@@ -10,8 +10,8 @@ const Resource = @import("../resource.zig").Resource;
 const Game = @import("../game.zig").Game;
 
 pub const GameActions = struct {
-    pub usingnamespace Component(component_prefix, GameActions);
-    pub usingnamespace ExportLua(GameActions, .{});
+    pub const component_info = Component(component_prefix, GameActions);
+    pub const lua_info = ExportLua(GameActions, .{});
 
     should_close: bool,
     test_field: ?isize = null,
@@ -31,7 +31,7 @@ pub const GameActions = struct {
 };
 
 pub const LuaRuntime = struct {
-    pub usingnamespace Component(component_prefix, LuaRuntime);
+    pub const component_info = Component(component_prefix, LuaRuntime);
 
     lua: *lua.State,
 };
@@ -39,8 +39,8 @@ pub const LuaRuntime = struct {
 pub fn EventBuffer(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub usingnamespace Component(component_prefix, Self);
-        pub usingnamespace ExportLua(Self, .{"allocator"});
+        pub const component_info = Component(component_prefix, Self);
+        pub const lua_info = ExportLua(Self, .{"allocator"});
 
         events: []T,
         allocator: std.mem.Allocator,
@@ -62,7 +62,7 @@ pub fn EventBuffer(comptime T: type) type {
 pub fn EventReader(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub usingnamespace ResourceProxy(EventBuffer(T));
+        pub const resource_proxy_info = ResourceProxy(EventBuffer(T));
 
         buffer: []T,
         pos: usize = 0,
@@ -86,7 +86,7 @@ pub fn EventReader(comptime T: type) type {
 pub fn EventWriterBuffer(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub usingnamespace Component(component_prefix, Self);
+        pub const component_info = Component(component_prefix, Self);
 
         events: std.ArrayList(T),
 
@@ -104,7 +104,7 @@ pub fn EventWriterBuffer(comptime T: type) type {
 pub fn EventWriter(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub usingnamespace ResourceProxy(EventWriterBuffer(T));
+        pub const resource_proxy_info = ResourceProxy(EventWriterBuffer(T));
 
         buffer: *std.ArrayList(T),
 

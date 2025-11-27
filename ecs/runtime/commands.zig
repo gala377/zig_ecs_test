@@ -19,7 +19,7 @@ const DeferredEntity = struct {
     components: std.AutoHashMap(ComponentId, ComponentWrapper),
 };
 
-pub usingnamespace component.LibComponent(component_prefix, Self);
+pub const component_info = component.LibComponent(component_prefix, Self);
 
 entities: std.ArrayList(DeferredEntity),
 remove_entities: std.ArrayList(EntityId),
