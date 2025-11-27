@@ -17,7 +17,9 @@ ecs.imgui.components = {}
 
 -- START TYPES
 
+
 -- END TYPES
+
 
 ---@diagnostic enable: unused-local
 ---@diagnostic enable: missing-fields
@@ -26,4 +28,3 @@ return {
 	logic = logic,
 	ecs = ecs,
 }
-

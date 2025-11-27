@@ -53,7 +53,7 @@ logic.ButtonOpen = {}
 ---@field events Slice<integer>
 ---@field private component_hash integer
 ---@field private metatable_name string
-ecs.runtime.components.EventBuffer(usize) = {}
+ecs.runtime.components["EventBuffer(usize)"] = {}
 
 
 -- END TYPES

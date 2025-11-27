@@ -1,4 +1,10 @@
--- this part is impossible
+-- TODO: WORK IN PROGRESS
+-- I am trying to expose event readers and event writers to lua
+-- but i am not sure how as they depend on generics
+--
+-- well this migth be possible if we express the fields as
+-- my.namespace.inner["EventReader(usize)"]
+-- we dealt with this in bevy
 local EventBuffer = ecs.runtime.components.EventBuffer
 
 local function EventReader(wrapped)

@@ -24,9 +24,8 @@ end
 ---@param actions GameActions
 local function click_run(buttons, actions)
 	for button in query.iter(buttons) do
-		---@cast button Button
 		if button.clicked then
-			actions.test_field = (actions.test_field or 0) + 1
+			print("Button clicked")
 		end
 	end
 end
