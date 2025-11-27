@@ -14,8 +14,6 @@ pub const GameActions = struct {
     pub const lua_info = ExportLua(GameActions, .{});
 
     should_close: bool,
-    test_field: ?isize = null,
-    test_field_2: ?f64 = null,
     log: [][]const u8,
     allocator: std.mem.Allocator,
 
