@@ -143,6 +143,8 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             checkForAllocatorNeededFields();
         }
 
+        /// Check if given field is in `ingored_fields`.
+        /// Check happens at compile time.
         fn isIgnoredField(comptime field: []const u8) bool {
             inline for (ignore_fields) |ignored| {
                 if (std.mem.eql(u8, field, ignored[0..])) {
@@ -152,6 +154,10 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             return false;
         }
 
+        /// Check if there is a field that requires allocation within the type T
+        ///
+        /// If there is check if there is an allocator field that can be used to
+        /// allocate memory for this field. If not that is a compile time error.
         fn checkForAllocatorNeededFields() void {
             const fields = std.meta.fields(T);
             const has_allocator = @hasField(T, "allocator");
@@ -176,6 +182,13 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             }
         }
 
+        /// Passes this component to lua as userdata.
+        ///
+        /// This component is wrapped into a pointer which means that lua does
+        /// not create a copy like it would do in a general case.
+        ///
+        /// That means that any changes to this component in lua will be reflected
+        /// and visible in zig.
         pub fn luaPush(self: *T, state: *clua.lua_State) void {
             // std.debug.print("Pushing value of t={s}\n", .{@typeName(T)});
             const allocated = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(T))) orelse @panic("lua could not allocate");
@@ -190,6 +203,12 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             }
         }
 
+        /// Creates a component wrapper from lua table
+        ///
+        /// This can be used to add native components created in lua.
+        ///
+        /// If the component has an allocator field or requires fields that need allocation
+        /// it will use storage allocator
         pub fn wrapperFromLua(state: *clua.lua_State, storage: *entity_storage) !ComponentWrapper {
             const tableIndex: c_int = 1;
             const comp: *T = try storage.allocator.create(T);
@@ -214,6 +233,9 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             return wrapper;
         }
 
+        /// Called from lua when reading a field
+        ///
+        /// TODO: we should also use it to handle methods. Would be nice.
         pub fn luaIndex(state: *clua.lua_State) callconv(.c) c_int {
             if (comptime @typeInfo(T) != .@"struct") {
                 @compileError("component has to be a struct");
@@ -224,6 +246,8 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             const luaField = clua.lua_tolstring(state, 2, null);
             inline for (fields) |f| {
                 const asSlice = std.mem.sliceTo(luaField, 0);
+                // TODO: We need special handling for fields that are struct/pointer to structs that
+                // are also lua supported as we can read them by calling their luaPush impl
                 if (isLuaSupported(f.type) and std.mem.eql(u8, f.name, asSlice) and !isIgnoredField(f.name)) {
                     const allocator: ?std.mem.Allocator = if (comptime @hasField(T, "allocator")) ptr.allocator else null;
                     luaPushValue(
@@ -239,6 +263,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             return 1;
         }
 
+        /// Called from lua when setting a field.
         pub fn luaNewIndex(state: *clua.lua_State) callconv(.c) c_int {
             if (comptime @typeInfo(T) != .@"struct") {
                 @compileError("component has to be a struct");
@@ -267,6 +292,11 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             return 0;
         }
 
+        /// Registers meta table within lua so taht it can be assigned when
+        /// user data is created.
+        ///
+        /// This has to be called before trying to pass instances of this component
+        /// to lua.
         pub fn registerMetaTable(lstate: lua.State) void {
             const state = lstate.state;
             if (comptime @typeInfo(T) != .@"struct") {
@@ -285,6 +315,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             clua.lua_pop(state, 1);
         }
 
+        /// Generates type information for lua to be used with LSP.
         pub fn luaGenerateStubFile(writer: std.io.AnyWriter) !void {
             const comp_name = @TypeOf(T.component_info).comp_name;
             const quote = std.mem.indexOfScalar(u8, comp_name, '(') != null;
@@ -309,6 +340,17 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             }
         }
 
+        /// Registers dynamic id of this component in lua.
+        ///
+        /// Dunamic id is used for reflection. Like when processing
+        /// system queries from lua.
+        ///
+        /// The dynamic id is registered under as a table:
+        ///
+        /// namespace.path.of.this.component.ComponentTypeName = {
+        ///     component_hash = dynamic_id,
+        ///     metatable_bame = component_meta_table_name,
+        /// }
         pub fn exportId(state: *clua.lua_State, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !void {
             const comp_name: []const u8 = @TypeOf(T.component_info).comp_name;
             var segments = std.mem.splitScalar(u8, comp_name, '.');
@@ -354,12 +396,14 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         }
     };
 }
-
+/// Generates code that is used to interoperate with Lua.
+///
 /// Ignore fields has to be a tuple of strings
 pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) ExportLuaInfo(T, ignore_fields) {
     return .{};
 }
 
+/// Given type T returns a name of the corresponding Lua type
 fn getLuaType(comptime T: type) []const u8 {
     return ret: switch (@typeInfo(T)) {
         .bool => "boolean",
@@ -385,6 +429,9 @@ fn getLuaType(comptime T: type) []const u8 {
     };
 }
 
+/// Deserializes value from lua to the type of `field_type`.
+///
+/// Intended to be used when deserializing values to set to fields.
 fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int, allocator: ?std.mem.Allocator) !field_type {
     const info = @typeInfo(field_type);
     switch (info) {
@@ -460,6 +507,7 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
     }
 }
 
+/// Check if type can be read from lua
 fn isLuaSupported(comptime t: type) bool {
     return switch (@typeInfo(t)) {
         .bool, .int, .float => true,
@@ -469,6 +517,7 @@ fn isLuaSupported(comptime t: type) bool {
     };
 }
 
+/// Push value of type T onto lua stack
 fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Allocator) !void {
     const info = @typeInfo(T);
     switch (info) {
