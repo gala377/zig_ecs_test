@@ -50,6 +50,63 @@ pub fn Sorted(T: type) type {
     return T;
 }
 
+pub fn RemoveTypeByDecl(comptime Types: anytype, comptime decl: []const u8) RemoveTypeByDeclType(Types, decl) {
+    const ret_t = RemoveTypeByDeclType(Types, decl);
+    var ret: ret_t = undefined;
+    comptime var j: usize = 0;
+    inline for (Types, 0..) |t, i| {
+        if (@hasDecl(t, decl)) continue;
+        ret[j] = ret[i];
+        j += 1;
+    }
+    return ret;
+}
+
+pub fn RemoveTypeByDeclType(comptime Types: anytype, comptime decl: []const u8) type {
+    const info = @typeInfo(@TypeOf(Types));
+    if (info != .@"struct" or !info.@"struct".is_tuple) {
+        @compileError("Expected a tuple of types");
+    }
+
+    const fields = info.@"struct".fields;
+
+    // Build new tuple fields, each being a pointer to original type
+    var new_fields: [fields.len]std.builtin.Type.StructField = undefined;
+
+    var index = 0;
+    inline for (Types, fields) |Type, field| {
+        if (@hasDecl(Type, decl)) {} else {
+            new_fields[index] = field;
+            index += 1;
+        }
+    }
+    var filtered: [index]std.builtin.Type.StructField = undefined;
+    inline for (0..index) |i| {
+        filtered[i] = new_fields[i];
+    }
+    return @Type(.{
+        .@"struct" = .{
+            .is_tuple = true,
+            .layout = .auto,
+            .fields = &filtered,
+            .decls = &.{},
+        },
+    });
+}
+
+pub fn ExtractTypeByDecl(comptime Types: anytype, comptime decl: []const u8) type {
+    const info = @typeInfo(@TypeOf(Types));
+    if (info != .@"struct" or !info.@"struct".is_tuple) {
+        @compileError("Expected a tuple of types");
+    }
+
+    inline for (Types) |t| {
+        if (@hasDecl(t, decl)) {
+            return t;
+        }
+    }
+    return void;
+}
 /// Accepts a tuple of types and returns a type
 /// of a tuple that accepts pointers to those types.
 /// Basically maps

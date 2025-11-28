@@ -51,6 +51,7 @@ vtable_storage: *VTableStorage,
 
 const CacheEntry = struct {
     components: []const ComponentId,
+    exclude: []const ComponentId,
     archetypes: []const usize,
 };
 
@@ -211,7 +212,7 @@ fn findExactArchetypeProvidedSorted(self: *Self, ids: Sorted([]ComponentId)) ?*A
     return null;
 }
 
-pub fn query(self: *Self, comptime comps: anytype) QueryIter(comps) {
+pub fn query(self: *Self, comptime comps: anytype, comptime exclude: anytype) QueryIter(comps) {
     const info = @typeInfo(@TypeOf(comps));
     if (info != .@"struct" and !info.@"struct".is_tuple) {
         @compileError("query accepts a tuple of types");
@@ -227,17 +228,35 @@ pub fn query(self: *Self, comptime comps: anytype) QueryIter(comps) {
     }
     std.sort.heap(ComponentId, &componentIds, {}, std.sort.asc(ComponentId));
     _ = assertSorted(ComponentId, &componentIds);
-    const cache: []const usize = self.lookupQueryHash(&componentIds) catch @panic("could not build cache");
+
+    const info_exclude = @typeInfo(@TypeOf(exclude));
+    if (info_exclude != .@"struct" and !info_exclude.@"struct".is_tuple) {
+        @compileError("query accepts a tuple of types");
+    }
+    const infoStructExclude = info.@"struct";
+    var excludeIds: [infoStructExclude.fields.len]ComponentId = undefined;
+    inline for (exclude, 0..) |component, index| {
+        const tinfo = @typeInfo(@TypeOf(component));
+        if (tinfo != .type) {
+            @compileError("query accepts a typle of types");
+        }
+        excludeIds[index] = utils.dynamicTypeId(component, self.idprovider);
+    }
+    std.sort.heap(ComponentId, &excludeIds, {}, std.sort.asc(ComponentId));
+    _ = assertSorted(ComponentId, &excludeIds);
+
+    const cache: []const usize = self.lookupQueryHash(&componentIds, &excludeIds) catch @panic("could not build cache");
     return QueryIter(comps).init(self, componentIds, cache, self.idprovider);
 }
 
-pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId)) ![]const usize {
-    const query_hash = fnv1a64(component_ids);
+pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclude_ids: Sorted([]ComponentId)) ![]const usize {
+    const query_hash = fnv1a64(component_ids, exclude_ids);
     if (self.queries_hash.get(query_hash)) |cache_entries| {
         for (cache_entries.items) |entry| {
             if (std.mem.eql(ComponentId, entry.components, component_ids)) {
-                //std.debug.print("Returning cached {any}\n", .{component_ids});
-                return entry.archetypes;
+                if (std.mem.eql(ComponentId, entry.exclude, exclude_ids)) {
+                    return entry.archetypes;
+                }
             }
         }
     }
@@ -252,12 +271,17 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId)) ![]con
             next_archetype += 1;
             continue;
         }
+        if (std.mem.indexOfAny(ComponentId, archetype_comps, exclude_ids)) |_| {
+            next_archetype += 1;
+            continue;
+        }
         try cache.append(next_archetype);
         next_archetype += 1;
     }
     const asSlice = try cache.toOwnedSlice();
     const cache_entry = CacheEntry{
         .archetypes = asSlice,
+        .exclude = try self.allocator.dupe(ComponentId, exclude_ids),
         .components = try self.allocator.dupe(ComponentId, component_ids),
     };
     const entry_ptr = self.queries_hash.getPtr(query_hash);
@@ -279,9 +303,9 @@ pub const DynamicScopeOptions = struct {
 /// Scope has to be freed after the query has been used.
 ///
 /// Does not take ownership of the components slice. It has be the freed by the caller.
-pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, options: DynamicScopeOptions) !DynamicQueryScope {
+pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, exclude: []const ComponentId, options: DynamicScopeOptions) !DynamicQueryScope {
     const allocator = options.allocator orelse self.allocator;
-    return .init(self, components, allocator);
+    return .init(self, components, exclude, allocator);
 }
 
 fn findSubsetArchetypeProvidedSorted(self: *Self, ids: Sorted([]ComponentId)) ?*ArchetypeStorage {
@@ -384,6 +408,7 @@ fn invalidateCache(self: *Self) void {
     while (iter.next()) |c| {
         for (c.items) |item| {
             self.allocator.free(item.archetypes);
+            self.allocator.free(item.exclude);
             self.allocator.free(item.components);
         }
         c.deinit();
@@ -404,7 +429,7 @@ fn emptyDeinit(ptr: *anyopaque, allocator: std.mem.Allocator) void {
     _ = allocator;
 }
 
-pub fn fnv1a64(data: []const u64) u64 {
+pub fn fnv1a64(data: []const u64, exclude_data: []const u64) u64 {
     var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
     const prime: u64 = 0x100000001b3; // FNV prime
 
@@ -415,5 +440,14 @@ pub fn fnv1a64(data: []const u64) u64 {
             hash *%= prime; // *= prime, wrapping multiply
         }
     }
+
+    for (exclude_data) |x| {
+        const bytes = std.mem.asBytes(&x);
+        for (bytes) |b| {
+            hash ^= @as(u64, b);
+            hash *%= prime; // *= prime, wrapping multiply
+        }
+    }
+
     return hash;
 }

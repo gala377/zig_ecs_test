@@ -19,6 +19,7 @@ const ExportLua = ecs.component.ExportLua;
 const scene = ecs.scene;
 const Commands = ecs.Commands;
 const EntityId = ecs.EntityId;
+const Without = ecs.game.Without;
 
 pub fn installMainLogic(game: *Game) !void {
     try game.addSystems(.{
@@ -175,7 +176,7 @@ pub fn spawn_circle(commands: Commands, buttons: *Query(.{ Button, ButtonAddCirc
     }
 }
 
-pub fn add_player(commands: Commands, buttons: *Query(.{ Button, ButtonAddPlayer }), circles: *Query(.{ EntityId, Circle, NewCircle })) void {
+pub fn add_player(commands: Commands, buttons: *Query(.{ Button, ButtonAddPlayer }), circles: *Query(.{ EntityId, Circle, Without(.{PlayerMarker}) })) void {
     const button, _ = buttons.single();
     const cmd: *ecs.commands = commands.get();
     if (button.clicked) {

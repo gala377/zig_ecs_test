@@ -180,15 +180,15 @@ pub const Game = struct {
         };
     }
 
-    pub fn query(self: *Self, comptime components: anytype) Query(components) {
-        const global_components = self.global_entity_storage.query(components);
-        const scene_components = if (self.current_scene) |*s| s.entity_storage.query(components) else null;
-        return Query(components).init(global_components, scene_components);
+    pub fn query(self: *Self, comptime components: anytype, comptime exclude: anytype) Query(components ++ WrapIfNotEmpty(exclude)) {
+        const global_components = self.global_entity_storage.query(components, exclude);
+        const scene_components = if (self.current_scene) |*s| s.entity_storage.query(components, exclude) else null;
+        return Query(components ++ WrapIfNotEmpty(exclude)).init(global_components, scene_components);
     }
 
-    pub fn dynamicQueryScope(self: *Self, components: []const ComponentId) !JoinedDynamicScope {
-        const global_scope = try self.global_entity_storage.dynamicQueryScope(components, .{});
-        const scene_scope = if (self.current_scene) |*s| try s.entity_storage.dynamicQueryScope(components, .{}) else null;
+    pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, exclude: []const ComponentId) !JoinedDynamicScope {
+        const global_scope = try self.global_entity_storage.dynamicQueryScope(components, exclude, .{});
+        const scene_scope = if (self.current_scene) |*s| try s.entity_storage.dynamicQueryScope(components, exclude, .{}) else null;
         return JoinedDynamicScope{
             .global_scope = global_scope,
             .scene_scope = scene_scope,
@@ -200,9 +200,9 @@ pub const Game = struct {
         return .init(self.newId(), self.idprovider.idprovider(), self.allocator, self.vtable_storage);
     }
 
-    pub fn dynamicQueryScopeOpts(self: *Self, components: []const ComponentId, options: DynamicScopeOptions) !JoinedDynamicScope {
-        const global_scope = try self.global_entity_storage.dynamicQueryScope(components, options);
-        const scene_scope = if (self.current_scene) |*s| try s.entity_storage.dynamicQueryScope(components, options) else null;
+    pub fn dynamicQueryScopeOpts(self: *Self, components: []const ComponentId, exclude: []const ComponentId, options: DynamicScopeOptions) !JoinedDynamicScope {
+        const global_scope = try self.global_entity_storage.dynamicQueryScope(components, exclude, options);
+        const scene_scope = if (self.current_scene) |*s| try s.entity_storage.dynamicQueryScope(components, exclude, options) else null;
         return JoinedDynamicScope{
             .global_scope = global_scope,
             .scene_scope = scene_scope,
@@ -211,7 +211,7 @@ pub const Game = struct {
     }
 
     pub fn getResource(self: *Self, comptime T: type) Resource(T) {
-        var q = self.query(.{T});
+        var q = self.query(.{T}, .{});
         return .init(q.single()[0]);
     }
 
@@ -409,11 +409,32 @@ fn applyGameActions(game: *Game) void {
     }
 }
 
+pub fn Without(comptime components: anytype) type {
+    return struct {
+        pub const is_query_filter: bool = true;
+        pub const ComponentTypes = components;
+    };
+}
+
+pub fn WrapIfNotEmpty(comptime components: anytype) if (@typeInfo(@TypeOf(components)).@"struct".fields.len == 0)
+    @TypeOf(.{})
+else
+    @TypeOf(.{Without(components)}) {
+    const field_count = @typeInfo(@TypeOf(components)).@"struct".fields.len;
+    if (comptime field_count == 0) {
+        return .{};
+    } else {
+        return .{Without(components)};
+    }
+}
+
 pub fn Query(comptime components: anytype) type {
-    const InnerIter = QueryIter(components);
+    const Filtered = utils.RemoveTypeByDecl(components, "is_query_filter");
+    const InnerIter = QueryIter(Filtered);
     return struct {
         const ThisIter = @This();
-        pub const ComponentTypes = components;
+        pub const ComponentTypes = utils.RemoveTypeByDecl(components, "is_query_filter");
+        pub const FilterTypes = utils.ExtractTypeByDecl(components, "is_query_filter");
 
         global_components: InnerIter,
         scene_components: ?InnerIter,
@@ -425,7 +446,7 @@ pub fn Query(comptime components: anytype) type {
             };
         }
 
-        pub fn next(self: *ThisIter) ?PtrTuple(components) {
+        pub fn next(self: *ThisIter) ?PtrTuple(ComponentTypes) {
             while (self.global_components.next()) |c| {
                 return c;
             }
@@ -437,8 +458,8 @@ pub fn Query(comptime components: anytype) type {
             return null;
         }
 
-        pub fn single(self: *ThisIter) PtrTuple(components) {
-            var ret: ?PtrTuple(components) = null;
+        pub fn single(self: *ThisIter) PtrTuple(ComponentTypes) {
+            var ret: ?PtrTuple(ComponentTypes) = null;
             ret = self.global_components.next();
             if (ret != null and self.global_components.next() != null) {
                 @panic("expected only one entity but there is more");

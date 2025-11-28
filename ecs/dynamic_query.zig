@@ -37,10 +37,13 @@ pub const DynamicQueryScope = struct {
     allocator: std.mem.Allocator,
     cache: []const usize,
 
-    pub fn init(storage: *Storage, component_ids: []const ComponentId, allocator: std.mem.Allocator) !DynamicQueryScope {
+    pub fn init(storage: *Storage, component_ids: []const ComponentId, exclude: []const ComponentId, allocator: std.mem.Allocator) !DynamicQueryScope {
         const sorted = try allocator.dupe(ComponentId, component_ids);
         std.sort.heap(ComponentId, sorted, {}, std.sort.asc(ComponentId));
-        const cache = try storage.lookupQueryHash(sorted);
+        const exclude_sorted = try allocator.dupe(ComponentId, exclude);
+        defer allocator.free(exclude_sorted);
+        std.sort.heap(ComponentId, exclude_sorted, {}, std.sort.asc(ComponentId));
+        const cache = try storage.lookupQueryHash(sorted, exclude_sorted);
         return .{
             .component_ids = component_ids,
             .sorted_component_ids = sorted,

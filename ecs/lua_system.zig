@@ -121,7 +121,7 @@ fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSyst
 
 pub fn run(self: *Self, game: *Game, state: lua.State) !void {
     for (self.components, 0..) |q, i| {
-        self.scopes[i] = try game.dynamicQueryScopeOpts(q, .{ .allocator = self.iters_allocator.allocator() });
+        self.scopes[i] = try game.dynamicQueryScopeOpts(q, &.{}, .{ .allocator = self.iters_allocator.allocator() });
     }
     for (self.scopes, 0..) |*s, i| {
         self.iters[i] = s.iter();
