@@ -12,6 +12,7 @@ pub fn ComponentInfo(comptime name: []const u8) type {
         pub const comp_name = name;
     };
 }
+
 pub fn Component(comptime T: type) ComponentInfo(@typeName(T)) {
     return .{};
 }

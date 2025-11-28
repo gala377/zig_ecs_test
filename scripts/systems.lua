@@ -25,7 +25,7 @@ end
 local function click_run(buttons, actions)
 	for button in query.iter(buttons) do
 		if button.clicked then
-			print("Button clicked")
+			print("Button clicked from lua")
 		end
 	end
 end
