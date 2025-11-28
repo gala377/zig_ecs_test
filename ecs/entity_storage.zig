@@ -106,24 +106,22 @@ pub fn removeEntities(self: *Self, ids: []usize) void {
 pub fn addComponents(self: *Self, entity_id: usize, components: []ComponentWrapper) !void {
     // find entity
     for (self.archetypes.items) |*archetype| {
-        const e = archetype.entities.get(entity_id) orelse continue;
-        archetype.entities.remove(entity_id);
+        var e = archetype.entities.fetchOrderedRemove(entity_id) orelse continue;
+        try e.value.addComponents(components);
 
-        try e.addComponents(components);
-
-        const component_ids = try self.allocator.alloc(ComponentId, e.components.count());
+        const component_ids = try self.allocator.alloc(ComponentId, e.value.components.count());
         defer self.allocator.free(component_ids);
-        var entity_iter = e.components.keyIterator();
-        var i = 0;
+        var entity_iter = e.value.components.keyIterator();
+        var i: usize = 0;
         while (entity_iter.next()) |id| {
-            component_ids[i] = id;
+            component_ids[i] = id.*;
             i += 1;
         }
 
         std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
 
         const new_archetype = try self.findOrCreateArchetype(component_ids);
-        try new_archetype.entities.put(entity_id, e);
+        try new_archetype.entities.put(entity_id, e.value);
         return;
     }
     return error.entityNotFound;

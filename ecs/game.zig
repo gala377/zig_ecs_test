@@ -156,11 +156,6 @@ pub const Game = struct {
                     @panic("could not run lua system");
                 };
             }
-            const fps = rl.getFPS();
-            const frame_time = rl.getFrameTime();
-            var buf: [10000]u8 = undefined;
-            const numAsString = try std.fmt.bufPrintZ(&buf, "FPS: {:5}, frame time: {:.3}", .{ fps, frame_time });
-            rl.drawText(numAsString, 0, 0, 16, rl.Color.white);
             for (self.render_systems.items) |sys| {
                 sys(self);
             }
@@ -317,6 +312,24 @@ pub const Game = struct {
         if (scene_entities.items.len > 0) {
             self.current_scene.?.entity_storage.removeEntities(scene_entities.items);
         }
+    }
+
+    // Adds components to a given entity.
+    //
+    // Does not take ownership over a slice of components.
+    pub fn addComponents(self: *Self, id: EntityId, components: []ComponentWrapper) !void {
+        if (id.scene_id == 0) {
+            try self.global_entity_storage.addComponents(id.entity_id, components);
+            return;
+        } else if (self.current_scene) |*scene| {
+            if (scene.id == id.scene_id) {
+                try scene.entity_storage.addComponents(id.entity_id, components);
+                return;
+            }
+        }
+        // TODO: Later, maybe look through other scenes, if we will allow for
+        // storing scenes for later use
+        return error.sceneDoesNotExist;
     }
 
     pub fn insertEntity(self: *Self, id: EntityId, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {

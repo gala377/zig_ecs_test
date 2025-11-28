@@ -22,6 +22,7 @@ const DeferredEntity = struct {
 pub const component_info = component.LibComponent(component_prefix, Self);
 
 entities: std.ArrayList(DeferredEntity),
+add_components: std.ArrayList(DeferredEntity),
 remove_entities: std.ArrayList(EntityId),
 allocator: std.mem.Allocator,
 game: *Game,
@@ -33,6 +34,7 @@ pub fn init(game: *Game, allocator: std.mem.Allocator) Self {
         .entities = .init(allocator),
         .allocator = allocator,
         .remove_entities = .init(allocator),
+        .add_components = .init(allocator),
         .game = game,
     };
 }
@@ -50,6 +52,57 @@ pub fn addEntity(self: *Self, id: EntityId, components: []ComponentWrapper) !voi
         .id = id,
         .components = map,
     });
+}
+
+pub fn addComponents(self: *Self, entity_id: EntityId, components: anytype) !void {
+    if (entity_id.scene_id == 0) {
+        try self.addComponentsToGlobalEntity(entity_id, components);
+    } else {
+        try self.addComponentsToSceneEntity(entity_id, components);
+    }
+}
+
+fn registerComponentsToAdd(self: *Self, entity_id: EntityId, components: []ComponentWrapper) !void {
+    var map = std.AutoHashMap(ComponentId, ComponentWrapper).init(self.allocator);
+    for (components) |c| {
+        try map.put(c.vtable.component_id, c);
+    }
+    try self.add_components.append(.{
+        .id = entity_id,
+        .components = map,
+    });
+}
+
+pub fn addComponentsToGlobalEntity(self: *Self, entity_id: EntityId, components: anytype) !void {
+    const tinfo = @typeInfo(@TypeOf(components));
+    if (comptime tinfo != .@"struct" and !tinfo.@"struct".is_tuple) {
+        @compileError("components of an entity have to be passed as a tuple");
+    }
+    const infoStruct = tinfo.@"struct";
+    var componentsStorage: [infoStruct.fields.len]ComponentWrapper = undefined;
+    inline for (components, 0..) |comp, index| {
+        componentsStorage[index] = try self.game.global_entity_storage.allocComponent(comp);
+    }
+    try self.registerComponentsToAdd(entity_id, &componentsStorage);
+}
+
+pub fn addComponentsToSceneEntity(self: *Self, entity_id: EntityId, components: anytype) !void {
+    const cscene = if (self.game.current_scene) |*cscene| ret: {
+        break :ret cscene;
+    } else {
+        return error.noScenePresent;
+    };
+    const tinfo = @typeInfo(@TypeOf(components));
+    if (comptime tinfo != .@"struct" and !tinfo.@"struct".is_tuple) {
+        @compileError("components of an entity have to be passed as a tuple");
+    }
+    const infoStruct = tinfo.@"struct";
+
+    var componentsStorage: [infoStruct.fields.len]ComponentWrapper = undefined;
+    inline for (components, 0..) |comp, index| {
+        componentsStorage[index] = try cscene.entity_storage.allocComponent(comp);
+    }
+    try self.registerComponentsToAdd(entity_id, &componentsStorage);
 }
 
 pub fn addSceneEntity(self: *Self, components: []ComponentWrapper) !void {
@@ -126,6 +179,17 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         }
         e.components.deinit();
     }
+
+    for (self.add_components.items) |*e| {
+        var iter = e.components.valueIterator();
+        while (iter.next()) |comp| {
+            comp.vtable.deinit(comp.pointer, self.game.allocator);
+            comp.vtable.free(comp.pointer, self.game.allocator);
+        }
+        e.components.deinit();
+    }
+
+    self.add_components.deinit();
     self.entities.deinit();
     self.remove_entities.deinit();
 }

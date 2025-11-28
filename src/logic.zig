@@ -30,6 +30,8 @@ pub fn installMainLogic(game: *Game) !void {
         system(read_events),
         system(setup_circle),
         system(move_player_marker),
+        system(spawn_circle),
+        system(add_player),
     });
     try game.addDefferedSystem(system(finish_run));
     try game.addResource(RunOnce{});
@@ -106,6 +108,28 @@ pub fn installMainLogic(game: *Game) !void {
         },
         ButtonRemoveLast{},
     });
+
+    const add_circle_title: [:0]u8 = try game.allocator.dupeZ(u8, "New circle");
+    _ = try game.newGlobalEntity(.{
+        imgui.components.Button{
+            .pos = position.add_y(buttons_size.y * 5),
+            .size = buttons_size,
+            .title = @ptrCast(add_circle_title),
+            .allocator = game.allocator,
+        },
+        ButtonAddCircle{},
+    });
+
+    const add_player_title: [:0]u8 = try game.allocator.dupeZ(u8, "Add player");
+    _ = try game.newGlobalEntity(.{
+        imgui.components.Button{
+            .pos = position.add_y(buttons_size.y * 6),
+            .size = buttons_size,
+            .title = @ptrCast(add_player_title),
+            .allocator = game.allocator,
+        },
+        ButtonAddPlayer{},
+    });
     try ecs.shapes.installShapes(game);
     try game.addEvent(MyEvent);
 }
@@ -134,6 +158,31 @@ pub fn spawn_on_click(commands: Commands, buttons: *Query(.{ Button, ButtonSpawn
         _ = cmd.newSceneEntity(.{TestItem{
             .index = next_index,
         }}) catch @panic("could not make new scene entity");
+    }
+}
+
+const NewCircle = struct {
+    pub const component_info = Component(NewCircle);
+};
+
+pub fn spawn_circle(commands: Commands, buttons: *Query(.{ Button, ButtonAddCircle })) void {
+    const button, _ = buttons.single();
+    const cmd: *ecs.commands = commands.get();
+    if (button.clicked) {
+        _ = cmd.newSceneEntity(.{ Circle{ .radius = 50.0 }, Position{ .x = 1080.0 / 2, .y = 720.0 / 2 }, Style{
+            .background_color = Color.white,
+        }, NewCircle{} }) catch @panic("could not spawn circle");
+    }
+}
+
+pub fn add_player(commands: Commands, buttons: *Query(.{ Button, ButtonAddPlayer }), circles: *Query(.{ EntityId, Circle, NewCircle })) void {
+    const button, _ = buttons.single();
+    const cmd: *ecs.commands = commands.get();
+    if (button.clicked) {
+        while (circles.next()) |c| {
+            const id: *EntityId = c[0];
+            cmd.addComponents(id.*, .{PlayerMarker{}}) catch @panic("could not add component to entity");
+        }
     }
 }
 
@@ -194,6 +243,14 @@ pub const ButtonClose = struct {
 
 pub const ButtonRemoveLast = struct {
     pub const component_info = Component(ButtonRemoveLast);
+};
+
+pub const ButtonAddCircle = struct {
+    pub const component_info = Component(ButtonAddCircle);
+};
+
+pub const ButtonAddPlayer = struct {
+    pub const component_info = Component(ButtonAddPlayer);
 };
 
 const ButtonLua = struct {
