@@ -44,7 +44,7 @@ fn runGame(allocator: std.mem.Allocator) !void {
     defer game.deinit();
 
     try ecs.game.addDefaultPlugins(&game, true);
-    try imgui.addImguiPlugin(&game);
+    try imgui.addImguiPlugin(&game, .{ .show_fps = true });
     try imgui.exportLua(&game);
     try logic.installMainLogic(&game);
 

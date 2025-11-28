@@ -106,9 +106,9 @@ pub const Game = struct {
     inner_id: usize,
     systems: std.ArrayList(System),
     deffered_systems: std.ArrayList(System),
+    render_systems: std.ArrayList(System),
     lua_systems: std.ArrayList(LuaSystem),
     global_entity_storage: EntityStorage,
-    seen_components: std.AutoHashMap(u64, []const u8),
     idprovider: *SimpleIdProvider,
     vtable_storage: *VTableStorage,
 
@@ -126,10 +126,10 @@ pub const Game = struct {
             .inner_id = 1,
             .systems = .init(allocator),
             .deffered_systems = .init(allocator),
+            .render_systems = .init(allocator),
             .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator, id_provider.idprovider(), vtable_storage),
             .lua_systems = .init(allocator),
-            .seen_components = .init(allocator),
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
         };
@@ -161,21 +161,15 @@ pub const Game = struct {
             var buf: [10000]u8 = undefined;
             const numAsString = try std.fmt.bufPrintZ(&buf, "FPS: {:5}, frame time: {:.3}", .{ fps, frame_time });
             rl.drawText(numAsString, 0, 0, 16, rl.Color.white);
-
-            for (self.deffered_systems.items) |sys| {
+            for (self.render_systems.items) |sys| {
                 sys(self);
             }
             rl.clearBackground(.black);
             rl.endDrawing();
 
-            // const end = try std.time.Instant.now();
-            // const elapsed_ns = end.since(start);
-            // total += elapsed_ns;
-            // const avg = total / iters;
-            // const seconds_per_frame = @as(f64, @floatFromInt(avg)) / 1_000_000_000.0;
-            // const fps = 1.0 / seconds_per_frame;
-            // iters += 1;
-            // std.debug.print("FPS: {d:.2}\n", .{fps});
+            for (self.deffered_systems.items) |sys| {
+                sys(self);
+            }
         }
     }
 
@@ -244,6 +238,10 @@ pub const Game = struct {
 
     pub fn addDefferedSystem(self: *Self, system: System) !void {
         try self.deffered_systems.append(system);
+    }
+
+    pub fn addRenderSystem(self: *Self, system: System) !void {
+        try self.render_systems.append(system);
     }
 
     pub fn addLuaSystem(self: *Self, path: []const u8) !void {
@@ -347,6 +345,7 @@ pub const Game = struct {
     pub fn deinit(self: *Self) void {
         self.systems.deinit();
         self.deffered_systems.deinit();
+        self.render_systems.deinit();
         if (self.current_scene) |*scene| {
             scene.deinit();
         }
@@ -358,11 +357,6 @@ pub const Game = struct {
         // INFO: components may hold references to lua so we need to
         // dealloc it last
         self.lua_state.deinit();
-        var names = self.seen_components.valueIterator();
-        while (names.next()) |name| {
-            self.allocator.free(name.*);
-        }
-        self.seen_components.deinit();
         self.allocator.destroy(self.idprovider);
         self.vtable_storage.deinit();
         self.allocator.destroy(self.vtable_storage);

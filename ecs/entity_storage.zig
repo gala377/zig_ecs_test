@@ -33,6 +33,7 @@ pub const ComponentWrapper = struct {
     };
 
     pointer: *anyopaque,
+    // should be static
     vtable: *VTable,
 };
 
