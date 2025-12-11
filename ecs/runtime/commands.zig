@@ -31,16 +31,16 @@ pub const Commands = Resource(Self);
 
 pub fn init(game: *Game, allocator: std.mem.Allocator) Self {
     return .{
-        .entities = .init(allocator),
+        .entities = .empty,
         .allocator = allocator,
-        .remove_entities = .init(allocator),
-        .add_components = .init(allocator),
+        .remove_entities = .empty,
+        .add_components = .empty,
         .game = game,
     };
 }
 
 pub fn removeEntity(self: *Self, id: EntityId) !void {
-    try self.remove_entities.append(id);
+    try self.remove_entities.append(self.allocator, id);
 }
 
 pub fn addEntity(self: *Self, id: EntityId, components: []ComponentWrapper) !void {
@@ -48,7 +48,7 @@ pub fn addEntity(self: *Self, id: EntityId, components: []ComponentWrapper) !voi
     for (components) |c| {
         try map.put(c.vtable.component_id, c);
     }
-    try self.entities.append(.{
+    try self.entities.append(self.allocator, .{
         .id = id,
         .components = map,
     });
@@ -67,7 +67,7 @@ fn registerComponentsToAdd(self: *Self, entity_id: EntityId, components: []Compo
     for (components) |c| {
         try map.put(c.vtable.component_id, c);
     }
-    try self.add_components.append(.{
+    try self.add_components.append(self.allocator, .{
         .id = entity_id,
         .components = map,
     });
@@ -189,7 +189,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         e.components.deinit();
     }
 
-    self.add_components.deinit();
-    self.entities.deinit();
-    self.remove_entities.deinit();
+    self.add_components.deinit(self.allocator);
+    self.entities.deinit(self.allocator);
+    self.remove_entities.deinit(self.allocator);
 }

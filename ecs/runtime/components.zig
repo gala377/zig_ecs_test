@@ -87,6 +87,7 @@ pub fn EventWriterBuffer(comptime T: type) type {
         pub const component_info = Component(component_prefix, Self);
 
         events: std.ArrayList(T),
+        allocator: std.mem.Allocator,
 
         pub fn deinit(self: *Self) void {
             if (comptime @typeInfo(T) == .@"struct" and @hasDecl(T, "deinit")) {
@@ -94,7 +95,7 @@ pub fn EventWriterBuffer(comptime T: type) type {
                     event.deinit();
                 }
             }
-            self.events.deinit();
+            self.events.deinit(self.allocator);
         }
     };
 }
@@ -105,15 +106,17 @@ pub fn EventWriter(comptime T: type) type {
         pub const resource_proxy_info = ResourceProxy(EventWriterBuffer(T));
 
         buffer: *std.ArrayList(T),
+        allocator: std.mem.Allocator,
 
         pub fn fromResource(buffer: *EventWriterBuffer(T)) Self {
             return .{
                 .buffer = &buffer.events,
+                .allocator = buffer.allocator,
             };
         }
 
         pub fn add(self: *const Self, event: T) void {
-            self.buffer.append(event) catch @panic("could not add event");
+            self.buffer.append(self.allocator, event) catch @panic("could not add event");
         }
     };
 }
@@ -124,7 +127,7 @@ pub fn eventSystem(comptime T: type) *const fn (*Game) void {
             const event_buffer = game.getResource(EventBuffer(T));
             const event_writer = game.getResource(EventWriterBuffer(T));
             if (event_writer.inner.events.items.len > 0) {
-                const new_buffer = event_writer.inner.events.toOwnedSlice() catch @panic("could not own the slice");
+                const new_buffer = event_writer.inner.events.toOwnedSlice(event_writer.inner.allocator) catch @panic("could not own the slice");
                 if (event_buffer.inner.events.len > 0) {
                     event_buffer.inner.deinit();
                 }

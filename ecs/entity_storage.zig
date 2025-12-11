@@ -57,8 +57,8 @@ const CacheEntry = struct {
 
 pub fn init(allocator: std.mem.Allocator, idprovider: utils.IdProvider, vtable_storage: *VTableStorage) !Self {
     return .{
-        .archetypes = .init(allocator),
-        .components_per_archetype = .init(allocator),
+        .archetypes = .empty,
+        .components_per_archetype = .empty,
         .allocator = allocator,
         .queries_hash = .init(allocator),
         .idprovider = idprovider,
@@ -192,8 +192,8 @@ fn createArchetype(self: *Self, ids: Sorted([]ComponentId)) !*ArchetypeStorage {
         .components = heaped,
         .entities = .init(self.allocator),
     };
-    try self.archetypes.append(new);
-    try self.components_per_archetype.append(heaped);
+    try self.archetypes.append(self.allocator, new);
+    try self.components_per_archetype.append(self.allocator, heaped);
     return &self.archetypes.items[self.archetypes.items.len - 1];
 }
 
@@ -262,7 +262,7 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclud
     }
 
     //std.debug.print("Building cache {any}\n", .{component_ids});
-    var cache = std.ArrayList(usize).init(self.allocator);
+    var cache = std.ArrayList(usize).empty;
     var next_archetype: usize = 0;
     while (next_archetype < self.archetypes.items.len) {
         const archetype_comps = self.components_per_archetype.items[next_archetype];
@@ -275,10 +275,10 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclud
             next_archetype += 1;
             continue;
         }
-        try cache.append(next_archetype);
+        try cache.append(self.allocator, next_archetype);
         next_archetype += 1;
     }
-    const asSlice = try cache.toOwnedSlice();
+    const asSlice = try cache.toOwnedSlice(self.allocator);
     const cache_entry = CacheEntry{
         .archetypes = asSlice,
         .exclude = try self.allocator.dupe(ComponentId, exclude_ids),
@@ -286,10 +286,10 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclud
     };
     const entry_ptr = self.queries_hash.getPtr(query_hash);
     if (entry_ptr) |ptr| {
-        try ptr.append(cache_entry);
+        try ptr.append(self.allocator, cache_entry);
     } else {
-        var fresh = std.ArrayList(CacheEntry).init(self.allocator);
-        try fresh.append(cache_entry);
+        var fresh = std.ArrayList(CacheEntry).empty;
+        try fresh.append(self.allocator, cache_entry);
         try self.queries_hash.put(query_hash, fresh);
     }
     return asSlice;
@@ -389,7 +389,7 @@ pub fn createWrapper(self: *Self, comptime Component: type, cptr: *Component) !C
 }
 
 pub fn deinit(self: *Self) void {
-    self.components_per_archetype.deinit();
+    self.components_per_archetype.deinit(self.allocator);
     for (self.archetypes.items) |*archetype| {
         self.allocator.free(archetype.components);
         const it = archetype.entities.values();
@@ -398,7 +398,7 @@ pub fn deinit(self: *Self) void {
         }
         archetype.entities.deinit();
     }
-    self.archetypes.deinit();
+    self.archetypes.deinit(self.allocator);
     self.invalidateCache();
     self.queries_hash.deinit();
 }
@@ -411,7 +411,7 @@ fn invalidateCache(self: *Self) void {
             self.allocator.free(item.exclude);
             self.allocator.free(item.components);
         }
-        c.deinit();
+        c.deinit(self.allocator);
     }
     self.queries_hash.clearRetainingCapacity();
 }

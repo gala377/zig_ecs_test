@@ -8,6 +8,7 @@ pub const clib = @cImport({
     @cInclude("lualib.h");
     @cInclude("lauxlib.h");
 });
+pub const CLUA_T = clib.lua_State;
 
 const std = @import("std");
 

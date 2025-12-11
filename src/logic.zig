@@ -183,6 +183,7 @@ pub fn add_player(commands: Commands, buttons: *Query(.{ Button, ButtonAddPlayer
         while (circles.next()) |c| {
             const id: *EntityId = c[0];
             cmd.addComponents(id.*, .{PlayerMarker{}}) catch @panic("could not add component to entity");
+            break;
         }
     }
 }
@@ -295,7 +296,7 @@ fn call_ref(
         const cls_btn: *Button, _ = close_button.single();
 
         lstate.pushRef(lua_clb.callback);
-        @TypeOf(@TypeOf(cls_btn.*).lua_info).luaPush(cls_btn, lstate.state);
+        @TypeOf(@TypeOf(cls_btn.*).lua_info).luaPush(cls_btn, @ptrCast(lstate.state));
 
         lstate.callDontPop(1, 1);
         lstate.pop() catch {};

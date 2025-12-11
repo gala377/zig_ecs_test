@@ -45,9 +45,9 @@ pub const LuaState = struct {
         allocator: std.mem.Allocator,
 
         /// Called from lua to allocate, reallocate and free memory.
-        pub fn alloc(self: *Context, ptr: ?*anyopaque, osize: usize, nsize: usize) callconv(.C) ?*anyopaque {
+        pub fn alloc(self: *Context, ptr: ?*anyopaque, osize: usize, nsize: usize) callconv(.c) ?*anyopaque {
             if (ptr == null) {
-                const allocated: []align(8) u8 = self.allocator.alignedAlloc(u8, 8, nsize) catch {
+                const allocated: []align(8) u8 = self.allocator.alignedAlloc(u8, .@"8", nsize) catch {
                     return null;
                 };
                 return @as(?*anyopaque, @ptrCast(allocated.ptr));
@@ -202,6 +202,14 @@ pub const LuaState = struct {
             return LuaError.stackEmpty;
         }
     }
+
+    pub fn newMetaTable(self: Self, name: [:0]const u8) c_int {
+        return lua.luaL_newmetatable(self.state, name);
+    }
+
+    pub fn newTable(self: Self) void {
+        lua.lua_newtable(self.state);
+    }
 };
 
 const ReaderCtx = struct {
@@ -209,7 +217,7 @@ const ReaderCtx = struct {
     last_read: usize,
 };
 
-fn sliceReader(state: ?*lua.lua_State, data: *ReaderCtx, size: [*c]usize) callconv(.C) [*c]const u8 {
+fn sliceReader(state: ?*lua.lua_State, data: *ReaderCtx, size: [*c]usize) callconv(.c) [*c]const u8 {
     _ = state;
     if (data.last_read == data.data.len) {
         return null;

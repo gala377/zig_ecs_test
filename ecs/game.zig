@@ -124,12 +124,12 @@ pub const Game = struct {
             .should_close = false,
             .options = options,
             .inner_id = 1,
-            .systems = .init(allocator),
-            .deffered_systems = .init(allocator),
-            .render_systems = .init(allocator),
+            .systems = .empty,
+            .deffered_systems = .empty,
+            .render_systems = .empty,
             .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator, id_provider.idprovider(), vtable_storage),
-            .lua_systems = .init(allocator),
+            .lua_systems = .empty,
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
         };
@@ -175,7 +175,7 @@ pub const Game = struct {
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
         @TypeOf(Comp.lua_info).registerMetaTable(self.lua_state);
-        @TypeOf(Comp.lua_info).exportId(self.lua_state.state, self.idprovider.idprovider(), self.allocator) catch {
+        @TypeOf(Comp.lua_info).exportId(@ptrCast(self.lua_state.state), self.idprovider.idprovider(), self.allocator) catch {
             @panic("could not export component to lua");
         };
     }
@@ -222,21 +222,21 @@ pub const Game = struct {
     pub fn addEvent(self: *Self, comptime T: type) !void {
         _ = try self.newGlobalEntity(.{
             runtime.EventBuffer(T){ .allocator = self.allocator, .events = &.{} },
-            runtime.EventWriterBuffer(T){ .events = .init(self.allocator) },
+            runtime.EventWriterBuffer(T){ .allocator = self.allocator, .events = .empty },
         });
         try self.addDefferedSystem(runtime.eventSystem(T));
     }
 
     pub fn addSystem(self: *Self, system: System) !void {
-        try self.systems.append(system);
+        try self.systems.append(self.allocator, system);
     }
 
     pub fn addDefferedSystem(self: *Self, system: System) !void {
-        try self.deffered_systems.append(system);
+        try self.deffered_systems.append(self.allocator, system);
     }
 
     pub fn addRenderSystem(self: *Self, system: System) !void {
-        try self.render_systems.append(system);
+        try self.render_systems.append(self.allocator, system);
     }
 
     pub fn addLuaSystem(self: *Self, path: []const u8) !void {
@@ -248,7 +248,7 @@ pub const Game = struct {
         defer self.allocator.free(contents);
         try self.lua_state.loadWithName(contents, path);
         const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
-        try self.lua_systems.append(system);
+        try self.lua_systems.append(self.allocator, system);
     }
 
     pub fn addLuaSystems(self: *Self, path: []const u8) !void {
@@ -259,14 +259,14 @@ pub const Game = struct {
         const contents = try file.readToEndAlloc(self.allocator, std.math.maxInt(usize));
         defer self.allocator.free(contents);
         try self.lua_state.loadWithName(contents, path);
-        if (clua.lua_type(self.lua_state.state, -1) != clua.LUA_TTABLE) {
+        if (clua.lua_type(@ptrCast(self.lua_state.state), -1) != clua.LUA_TTABLE) {
             return error.expectedTable;
         }
-        const len = clua.lua_rawlen(self.lua_state.state, -1);
+        const len = clua.lua_rawlen(@ptrCast(self.lua_state.state), -1);
         for (0..len) |idx| {
-            _ = clua.lua_geti(self.lua_state.state, -1, @intCast(idx + 1));
+            _ = clua.lua_geti(@ptrCast(self.lua_state.state), -1, @intCast(idx + 1));
             const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
-            try self.lua_systems.append(system);
+            try self.lua_systems.append(self.allocator, system);
         }
         self.lua_state.popUnchecked();
     }
@@ -289,18 +289,18 @@ pub const Game = struct {
     }
 
     pub fn removeEntities(self: *Self, ids: []EntityId) !void {
-        var global_entities = std.ArrayList(usize).init(self.allocator);
-        defer global_entities.deinit();
-        var scene_entities = std.ArrayList(usize).init(self.allocator);
-        defer scene_entities.deinit();
+        var global_entities = std.ArrayList(usize).empty;
+        defer global_entities.deinit(self.allocator);
+        var scene_entities = std.ArrayList(usize).empty;
+        defer scene_entities.deinit(self.allocator);
         for (ids) |id| {
             if (id.scene_id == 0) {
-                try global_entities.append(id.entity_id);
+                try global_entities.append(self.allocator, id.entity_id);
                 continue;
             }
             if (self.current_scene) |*scene| {
                 if (scene.id == id.scene_id) {
-                    try scene_entities.append(id.entity_id);
+                    try scene_entities.append(self.allocator, id.entity_id);
                     continue;
                 }
             }
@@ -356,16 +356,16 @@ pub const Game = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.systems.deinit();
-        self.deffered_systems.deinit();
-        self.render_systems.deinit();
+        self.systems.deinit(self.allocator);
+        self.deffered_systems.deinit(self.allocator);
+        self.render_systems.deinit(self.allocator);
         if (self.current_scene) |*scene| {
             scene.deinit();
         }
         for (self.lua_systems.items) |*system| {
             system.deinit();
         }
-        self.lua_systems.deinit();
+        self.lua_systems.deinit(self.allocator);
         self.global_entity_storage.deinit();
         // INFO: components may hold references to lua so we need to
         // dealloc it last
@@ -392,7 +392,7 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
     if (export_lua) {
         game.exportComponent(GameActions);
         game.exportComponent(EntityId);
-        game.idprovider.exportIdFunction(game.lua_state.state);
+        game.idprovider.exportIdFunction(@ptrCast(game.lua_state.state));
         DynamicQuery.registerMetaTable(game.lua_state);
     }
 }
@@ -574,7 +574,7 @@ pub const DynamicQuery = struct {
     }
 
     pub fn registerMetaTable(lstate: lua.State) void {
-        const state = lstate.state;
+        const state: *clua.lua_State = @ptrCast(lstate.state);
         if (clua.luaL_newmetatable(state, MetaTableName) != 1) {
             @panic("Could not create metatable");
         }

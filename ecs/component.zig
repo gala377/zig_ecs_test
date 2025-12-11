@@ -91,7 +91,7 @@ pub fn SliceProxy(comptime Slice: type) type {
             return 1;
         }
 
-        pub fn getIndex(state: *clua.lua_State) callconv(.c) c_int {
+        pub fn getIndex(state: *lua.CLUA_T) callconv(.c) c_int {
             const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
             if (clua.lua_type(state, 2) == clua.LUA_TNUMBER) {
                 const lua_index = clua.lua_tointegerx(state, 2, null);
@@ -299,7 +299,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         /// This has to be called before trying to pass instances of this component
         /// to lua.
         pub fn registerMetaTable(lstate: lua.State) void {
-            const state = lstate.state;
+            const state: *lua.CLUA_T = @ptrCast(lstate.state);
             if (comptime @typeInfo(T) != .@"struct") {
                 @compileError("component has to be a struct");
             }
@@ -352,7 +352,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         ///     component_hash = dynamic_id,
         ///     metatable_bame = component_meta_table_name,
         /// }
-        pub fn exportId(state: *clua.lua_State, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !void {
+        pub fn exportId(state: *lua.CLUA_T, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !void {
             const comp_name: []const u8 = @TypeOf(T.component_info).comp_name;
             var segments = std.mem.splitScalar(u8, comp_name, '.');
             var idx: usize = 0;
