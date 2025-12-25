@@ -20,6 +20,7 @@ const scene = ecs.scene;
 const Commands = ecs.Commands;
 const EntityId = ecs.EntityId;
 const Without = ecs.game.Without;
+const lua_script = ecs.lua_script;
 
 pub fn installMainLogic(game: *Game) !void {
     try game.addSystems(.{
@@ -133,6 +134,21 @@ pub fn installMainLogic(game: *Game) !void {
     });
     try ecs.shapes.installShapes(game);
     try game.addEvent(MyEvent);
+
+    const object = game.luaLoad(
+        \\ local f = {}
+        \\ function f:Init()
+        \\   print("executed")
+        \\   zig_yield()
+        \\   print("past yield")
+        \\ end
+        \\ return f
+    ) catch @panic("could not load");
+    const script = lua_script.LuaScript.fromLua(game.allocator, game.lua_state, object) catch @panic("could not create object");
+    _ = game.newGlobalEntity(.{
+        script,
+    }) catch @panic("could not create entoty");
+    game.addSystems(.{system(lua_script.runInitScripts)}) catch @panic("could not add system");
 }
 
 pub const MyEvent = usize;

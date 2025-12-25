@@ -52,7 +52,7 @@ pub const LuaState = struct {
                 };
                 return @as(?*anyopaque, @ptrCast(allocated.ptr));
             }
-            const mem: [*]align(8) u8 = @alignCast(@ptrCast(ptr));
+            const mem: [*]align(8) u8 = @ptrCast(@alignCast(ptr));
             const asSlice: []align(8) u8 = mem[0..osize];
             const ret: []align(8) u8 = self.allocator.realloc(asSlice, nsize) catch {
                 return null;
@@ -240,14 +240,14 @@ fn luaToString(state: *lua.lua_State, idx: c_int) [*c]const u8 {
 }
 
 fn luaToTable(state: *lua.lua_State, idx: c_int, allocator: std.mem.Allocator) (std.mem.Allocator.Error || LuaState.LuaError)!Value {
-    var table = std.ArrayList(Pair).init(allocator);
+    var table = std.ArrayList(Pair).empty;
     lua.lua_pushnil(state);
     while (lua.lua_next(state, idx - 1) != 0) {
         const key = try makeValue(state, allocator, -2);
         const value = try makeValue(state, allocator, -1);
         // only pop the value, leave the key for the next iteration
         lua.lua_pop(state, 1);
-        try table.append(.{ .key = key, .value = value });
+        try table.append(allocator, .{ .key = key, .value = value });
     }
     return Value{ .Table = .{
         .value = table,
