@@ -97,6 +97,8 @@ pub const Game = struct {
 
     // private
     allocator: std.mem.Allocator,
+    frame_allocator: std.heap.ArenaAllocator,
+
     lua_state: lua.State,
 
     // internal state
@@ -104,12 +106,15 @@ pub const Game = struct {
     current_scene: ?Scene,
 
     inner_id: usize,
-    systems: std.ArrayList(System),
-    deffered_systems: std.ArrayList(System),
-    render_systems: std.ArrayList(System),
-    lua_systems: std.ArrayList(LuaSystem),
-    global_entity_storage: EntityStorage,
     idprovider: *SimpleIdProvider,
+
+    systems: std.ArrayList(System),
+    lua_systems: std.ArrayList(LuaSystem),
+    render_systems: std.ArrayList(System),
+    deffered_systems: std.ArrayList(System),
+    tear_down_system: std.ArrayList(System),
+
+    global_entity_storage: EntityStorage,
     vtable_storage: *VTableStorage,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
@@ -127,11 +132,13 @@ pub const Game = struct {
             .systems = .empty,
             .deffered_systems = .empty,
             .render_systems = .empty,
+            .tear_down_system = .empty,
             .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator, id_provider.idprovider(), vtable_storage),
             .lua_systems = .empty,
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
+            .frame_allocator = .init(std.heap.c_allocator),
         };
     }
 
@@ -165,12 +172,21 @@ pub const Game = struct {
             for (self.deffered_systems.items) |sys| {
                 sys(self);
             }
+            for (self.tear_down_system.items) |sys| {
+                sys(self);
+            }
         }
     }
 
     fn installRuntime(self: *Self) !void {
         try self.addResource(commands.init(self, self.allocator));
+        try self.addResource(runtime.GlobalAllocator{ .allocator = self.allocator });
+        try self.addResource(runtime.FrameAllocator{
+            .allocator = self.frame_allocator.allocator(),
+            .arena = &self.frame_allocator,
+        });
         try self.addDefferedSystem(mksystem(commands_system.create_entities));
+        try self.addTearDownSystem(mksystem(runtime.freeFrameAllocator));
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
@@ -237,6 +253,10 @@ pub const Game = struct {
 
     pub fn addRenderSystem(self: *Self, system: System) !void {
         try self.render_systems.append(self.allocator, system);
+    }
+
+    pub fn addTearDownSystem(self: *Self, system: System) !void {
+        try self.tear_down_system.append(self.allocator, system);
     }
 
     pub fn addLuaSystem(self: *Self, path: []const u8) !void {
@@ -359,6 +379,7 @@ pub const Game = struct {
         self.systems.deinit(self.allocator);
         self.deffered_systems.deinit(self.allocator);
         self.render_systems.deinit(self.allocator);
+        self.tear_down_system.deinit(self.allocator);
         if (self.current_scene) |*scene| {
             scene.deinit();
         }
@@ -373,6 +394,7 @@ pub const Game = struct {
         self.allocator.destroy(self.idprovider);
         self.vtable_storage.deinit();
         self.allocator.destroy(self.vtable_storage);
+        self.frame_allocator.deinit();
     }
 
     pub fn newId(self: *Self) usize {

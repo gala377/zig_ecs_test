@@ -140,3 +140,23 @@ pub fn eventSystem(comptime T: type) *const fn (*Game) void {
         }
     }.call;
 }
+
+// Global allocator to be used by persisting allocations
+pub const GlobalAllocator = struct {
+    pub const component_info = Component(component_prefix, GlobalAllocator);
+
+    allocator: std.mem.Allocator,
+};
+
+// Frame allocator, freed after every frame
+pub const FrameAllocator = struct {
+    pub const component_info = Component(component_prefix, FrameAllocator);
+
+    allocator: std.mem.Allocator,
+    arena: *std.heap.ArenaAllocator,
+};
+
+pub fn freeFrameAllocator(allocator_res: Resource(FrameAllocator)) void {
+    const allocator = allocator_res.get();
+    _ = allocator.arena.reset(.retain_capacity);
+}

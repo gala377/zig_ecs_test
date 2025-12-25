@@ -138,8 +138,10 @@ pub fn installMainLogic(game: *Game) !void {
     const object = game.luaLoad(
         \\ local f = {}
         \\ function f:Init()
+        \\   self.msg = "hello"
+        \\   print("IN LUA IN LUA")
         \\   print("executed")
-        \\   zig_yield()
+        \\   zig_yield("dispatch to zig: " .. self.msg)
         \\   print("past yield")
         \\ end
         \\ return f
