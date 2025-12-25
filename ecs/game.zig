@@ -77,7 +77,7 @@ const SimpleIdProvider = struct {
     }
 
     pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
-        const self: *SimpleIdProvider = @alignCast(@ptrCast(clua.lua_touserdata(state, clua.lua_upvalueindex(1))));
+        const self: *SimpleIdProvider = @ptrCast(@alignCast(clua.lua_touserdata(state, clua.lua_upvalueindex(1))));
         clua.lua_pushinteger(state, @intCast(self.next()));
         return 1;
     }
@@ -538,7 +538,7 @@ pub const DynamicQuery = struct {
     pub fn luaPush(self: *Self, state: *clua.lua_State) void {
         // std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
         const raw = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(Self))) orelse @panic("lua could not allocate memory");
-        const udata: *utils.ZigPointer(Self) = @alignCast(@ptrCast(raw));
+        const udata: *utils.ZigPointer(Self) = @ptrCast(@alignCast(raw));
         udata.* = utils.ZigPointer(Self){ .ptr = self };
         if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
             @panic("Metatable " ++ MetaTableName ++ "not found");
@@ -551,7 +551,7 @@ pub const DynamicQuery = struct {
 
     pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
         // std.debug.print("calling next in zig\n", .{});
-        const ptr: *utils.ZigPointer(Self) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
+        const ptr: *utils.ZigPointer(Self) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
         const self = ptr.ptr;
         const rest = self.next();
         if (rest == null) {
