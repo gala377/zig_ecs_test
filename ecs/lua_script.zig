@@ -36,14 +36,31 @@ pub const LuaScript = struct {
         };
     }
 
-    pub fn pushScripInitCoroutine(self: *LuaScript) void {
+    // Returns true if the function exists.
+    // Otherwise returns false and clears the stack.
+    pub fn pushScripInitCoroutine(self: *LuaScript) bool {
         _ = clua.lua_rawgeti(self.thread, clua.LUA_REGISTRYINDEX, self.object.ref);
-        _ = clua.lua_getfield(self.thread, -1, "Init");
+        const t = clua.lua_getfield(self.thread, -1, "Init");
+        if (t == clua.LUA_TNIL) {
+            clua.lua_pop(self.thread, 2);
+            return false;
+        }
         clua.lua_rotate(self.thread, -2, 1);
+        return true;
+    }
+
+    pub fn pushScriptUpdateCoroutine(self: *LuaScript) bool {
+        _ = clua.lua_rawgeti(self.thread, clua.LUA_REGISTRYINDEX, self.object.ref);
+        const t = clua.lua_getfield(self.thread, -1, "Update");
+        if (t == clua.LUA_TNIL) {
+            clua.lua_pop(self.thread, 2);
+            return false;
+        }
+        clua.lua_rotate(self.thread, -2, 1);
+        return true;
     }
 
     pub fn runScriptCoroutine(self: *LuaScript, nargs: c_int) ?*ScriptCommand {
-        std.debug.print("Called coroutine\n", .{});
         var n_results: i32 = 0;
         const status = clua.lua_resume(self.thread, null, nargs, &n_results);
         switch (status) {
@@ -56,7 +73,6 @@ pub const LuaScript = struct {
                 return cmd;
             },
             clua.LUA_OK => {
-                std.debug.print("executed no problems\n", .{});
                 return null;
             },
             else => |x| {
@@ -124,16 +140,52 @@ pub fn runInitScripts(
 
     while (scripts.next()) |components| {
         const entity_id, const script = components;
-        script.pushScripInitCoroutine();
-        var nargs: c_int = 1;
-        while (script.runScriptCoroutine(nargs)) |command| {
-            switch (command.*) {
-                .print => |msg| {
-                    std.debug.print("Made it {s}\n", .{msg});
-                    nargs = 0;
-                },
+        if (script.pushScripInitCoroutine()) {
+            var nargs: c_int = 1;
+            while (script.runScriptCoroutine(nargs)) |command| {
+                switch (command.*) {
+                    .print => |msg| {
+                        std.debug.print("Made it {s}\n", .{msg});
+                        nargs = 0;
+                    },
+                }
             }
         }
         cmd.addComponents(entity_id.*, .{Initialized{}}) catch @panic("could not add component");
+    }
+}
+
+pub fn runUpdateScripts(
+    runtime: Resource(LuaRuntime),
+    allocator: Resource(FrameAllocator),
+    scripts: *Query(.{ LuaScript, Initialized }),
+) void {
+    // TODO: Those functions should be set in in a different setup system
+    // or in the plugin or something.
+    const state = runtime.get().lua.state;
+    const lstate = @as(*clua.lua_State, @ptrCast(state));
+    const alloc = &allocator.get().allocator;
+
+    // TODO: We can also technically, instead of pushing just allocator
+    // also push *ScriptCommand as this will make it so that
+    // we don't have to allocate this in every zig funtion just to return
+    // it, we can just pass this pointer around and zig functions will overwrite it
+    clua.lua_pushlightuserdata(lstate, @ptrCast(alloc));
+    clua.lua_pushcclosure(lstate, zig_yield, 1);
+    clua.lua_setglobal(lstate, "zig_yield");
+
+    while (scripts.next()) |components| {
+        const script, _ = components;
+        if (script.pushScriptUpdateCoroutine()) {
+            var nargs: c_int = 1;
+            while (script.runScriptCoroutine(nargs)) |command| {
+                switch (command.*) {
+                    .print => |msg| {
+                        std.debug.print("Made it {s}\n", .{msg});
+                        nargs = 0;
+                    },
+                }
+            }
+        }
     }
 }

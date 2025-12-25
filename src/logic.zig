@@ -143,6 +143,14 @@ pub fn installMainLogic(game: *Game) !void {
         \\   print("executed")
         \\   zig_yield("dispatch to zig: " .. self.msg)
         \\   print("past yield")
+        \\   self.msg = "yoyoyo" 
+        \\   self.counter = 0
+        \\ end
+        \\ function f:Update()
+        \\  self.counter = self.counter + 1
+        \\  if self.counter % 100 == 0 then 
+        \\    zig_yield(self.msg)
+        \\  end
         \\ end
         \\ return f
     ) catch @panic("could not load");
@@ -150,7 +158,10 @@ pub fn installMainLogic(game: *Game) !void {
     _ = game.newGlobalEntity(.{
         script,
     }) catch @panic("could not create entoty");
-    game.addSystems(.{system(lua_script.runInitScripts)}) catch @panic("could not add system");
+    game.addSystems(.{
+        system(lua_script.runInitScripts),
+        system(lua_script.runUpdateScripts),
+    }) catch @panic("could not add system");
 }
 
 pub const MyEvent = usize;

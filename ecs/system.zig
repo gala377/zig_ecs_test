@@ -3,6 +3,16 @@ const System = @import("game.zig").System;
 const std = @import("std");
 const utils = @import("utils.zig");
 
+pub fn chain(comptime systems: anytype) System {
+    return struct {
+        fn call(game: *Game) void {
+            inline for (systems) |sys| {
+                sys(game);
+            }
+        }
+    }.call;
+}
+
 pub fn system(comptime F: anytype) System {
     const info = @typeInfo(@TypeOf(F));
     if (comptime info != .@"fn") {
@@ -16,9 +26,13 @@ pub fn system(comptime F: anytype) System {
             var queries: std.meta.ArgsTuple(@TypeOf(F)) = undefined;
             inline for (params, 0..) |p, index| {
                 const para_t = p.type.?;
-                if (comptime @typeInfo(para_t) == .@"struct" and
+                if (comptime para_t == *Game) {
+                    // allow accessing game directly
+                    queries[index] = game;
+                } else if (comptime @typeInfo(para_t) == .@"struct" and
                     @hasDecl(para_t, "resource_proxy_info"))
                 {
+                    // allow getting resource proxies (readonly)
                     // it's a resource proxy so we will get a resource and creare it
                     var query = game.query(.{@TypeOf(para_t.resource_proxy_info).MappedResource}, .{});
                     const resource = query.single()[0];
@@ -27,6 +41,8 @@ pub fn system(comptime F: anytype) System {
                     @typeInfo(@typeInfo(para_t).pointer.child) == .@"struct" and
                     @hasDecl(@typeInfo(para_t).pointer.child, "resource_proxy_info"))
                 {
+
+                    // allow resource proxies by pointer (not const, can be mutated)
                     // it's also a resource proxy but taken by a pointer.
                     // Needed for mutability because zig is weird with its function arguments
                     var query = game.query(.{@TypeOf(@typeInfo(para_t).pointer.child.resource_proxy_info).MappedResource}, .{});
@@ -36,10 +52,12 @@ pub fn system(comptime F: anytype) System {
                 } else if (comptime @typeInfo(para_t) == .@"struct" and
                     @hasDecl(para_t, "is_resource_marker"))
                 {
+                    // allow resources
                     // this is a resource so we are just going to get it
                     var query = game.query(.{para_t.component_t}, .{});
                     queries[index] = .init(query.single()[0]);
                 } else {
+                    // allow queries
                     if (@typeInfo(para_t) != .pointer) {
                         @compileError("Queries have to be accepted by pointer " ++ @typeName(para_t));
                     }
