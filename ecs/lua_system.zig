@@ -148,7 +148,7 @@ pub fn run(self: *Self, game: *Game, state: lua.State) !void {
     try state.pop();
 
     if (!self.iters_allocator.reset(.retain_capacity)) {
-        return error.couldNotRestAllocator;
+        return error.couldNotResetAllocator;
     }
 }
 

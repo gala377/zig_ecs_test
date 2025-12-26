@@ -37,7 +37,7 @@ pub fn SliceProxy(comptime Slice: type) type {
         pub fn luaPush(slice: *Slice, allocator: std.mem.Allocator, state: *clua.lua_State) void {
             // std.debug.print("Pushing the proxy {s} of size {d} full proxy name {s}\n", .{ @typeName(Slice), @sizeOf(Self), @typeName(Self) });
             const allocated = clua.lua_newuserdata(state, @sizeOf(Self)) orelse @panic("lua could not allocate");
-            const self = @as(*Self, @alignCast(@ptrCast(allocated)));
+            const self = @as(*Self, @ptrCast(@alignCast(allocated)));
             // std.debug.print("Got address {d}\n", .{@intFromPtr(self)});
             self.* = Self{ .slice = slice, .allocator = allocator };
             if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
@@ -52,7 +52,7 @@ pub fn SliceProxy(comptime Slice: type) type {
 
         pub fn newIndex(state: *clua.lua_State) callconv(.c) c_int {
             // std.debug.print("Calling new index the stack size is {}\n", .{clua.lua_gettop(state)});
-            const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
+            const self: *Self = @ptrCast(@alignCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
             if (clua.lua_type(state, 2) != clua.LUA_TNUMBER) {
                 @panic("expected array index to be integer");
             }
@@ -76,13 +76,13 @@ pub fn SliceProxy(comptime Slice: type) type {
 
         pub fn slice_length(state: *clua.lua_State) callconv(.c) c_int {
             // std.debug.print("Calling slice length\n", .{});
-            const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
+            const self: *Self = @ptrCast(@alignCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
             clua.lua_pushinteger(state, @intCast(self.slice.len));
             return 1;
         }
 
         pub fn to_table(state: *clua.lua_State) callconv(.c) c_int {
-            const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
+            const self: *Self = @ptrCast(@alignCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
             clua.lua_newtable(state);
             for (0..self.slice.len) |index| {
                 luaPushValue(Element, state, &self.slice.*[@intCast(index)], self.allocator) catch @panic("could not push the value");
@@ -92,7 +92,7 @@ pub fn SliceProxy(comptime Slice: type) type {
         }
 
         pub fn getIndex(state: *lua.CLUA_T) callconv(.c) c_int {
-            const self: *Self = @alignCast(@ptrCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
+            const self: *Self = @ptrCast(@alignCast(clua.lua_touserdata(state, 1) orelse @panic("pointer is null")));
             if (clua.lua_type(state, 2) == clua.LUA_TNUMBER) {
                 const lua_index = clua.lua_tointegerx(state, 2, null);
                 const index = lua_index - 1;
@@ -193,7 +193,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         pub fn luaPush(self: *T, state: *clua.lua_State) void {
             // std.debug.print("Pushing value of t={s}\n", .{@typeName(T)});
             const allocated = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(T))) orelse @panic("lua could not allocate");
-            const udata = @as(*utils.ZigPointer(T), @alignCast(@ptrCast(allocated)));
+            const udata = @as(*utils.ZigPointer(T), @ptrCast(@alignCast(allocated)));
             udata.* = utils.ZigPointer(T){ .ptr = self };
             if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
                 @panic("Metatable " ++ MetaTableName ++ "not found");
@@ -242,8 +242,8 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                 @compileError("component has to be a struct");
             }
             const fields = std.meta.fields(T);
-            const udata: *utils.ZigPointer(T) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
-            const ptr: *T = @alignCast(@ptrCast(udata.ptr));
+            const udata: *utils.ZigPointer(T) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
+            const ptr: *T = @ptrCast(@alignCast(udata.ptr));
             const luaField = clua.lua_tolstring(state, 2, null);
             inline for (fields) |f| {
                 const asSlice = std.mem.sliceTo(luaField, 0);
@@ -270,8 +270,8 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                 @compileError("component has to be a struct");
             }
             const fields = std.meta.fields(T);
-            const udata: *utils.ZigPointer(T) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
-            const ptr: *T = @alignCast(@ptrCast(udata.ptr));
+            const udata: *utils.ZigPointer(T) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
+            const ptr: *T = @ptrCast(@alignCast(udata.ptr));
             const luaField = clua.lua_tolstring(state, 2, null);
             const asSlice = std.mem.sliceTo(luaField, 0);
             inline for (fields) |f| {
@@ -354,6 +354,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         /// }
         pub fn exportId(state: *lua.CLUA_T, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !void {
             const comp_name: []const u8 = @TypeOf(T.component_info).comp_name;
+            std.debug.print("Exporting component {s}\n", .{comp_name});
             var segments = std.mem.splitScalar(u8, comp_name, '.');
             var idx: usize = 0;
             while (segments.next()) |segment| {

@@ -84,7 +84,6 @@ pub fn makeEntity(self: *Self, id: usize, components: anytype) !EntityId {
     var entity = Entity.init(id, self.allocator);
     try entity.addComponents(&componentsStorage);
     const entity_id_comp: *EntityId = entity.getComponent(EntityId) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
-    std.debug.print("Got entity_id_component {any}", .{entity_id_comp});
     const storage = try self.findOrCreateArchetype(&componentIds);
     if (entity_id_comp.archetype_id) |aid| {
         aid.* = storage.archetype_index;

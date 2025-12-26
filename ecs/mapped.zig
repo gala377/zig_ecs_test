@@ -1,21 +1,20 @@
-// In general we want something like so
-// fn EventReader(comptime T: type) {
-//      return struct {
-//          const Self = @This();
-//          using namespace MappedComponent(Self, Event(T)),
-//
-//          ^ this would expand to something like this
-//          const MapsComponent: type = Event(T)
-//
-//          pub fn fromComponents(comp: *Event(T)) !Self {
-//              return .{
-//                  .buffer = comp.buffer,
-//                  .current = 0,
-//              }
-//          }
-//      };
-// }
-//
+/// Used to create a proxy for a resource that can be used as a system parameter.
+///
+/// type that derives it has to implement
+///
+/// pub const resource_proxy_info = ResourceProxy(T);
+/// fn fromResource(res: *T) Self { ... }
+///
+/// That returns self when given a resource.
+/// This should be really cheap as this will be created every time
+/// a system is invoked.
+///
+/// Then the system will be provided an instance of resource proxy.
+///
+/// This can be used to provide different interfaces for resources.
+/// Like read only / write only interface.
+///
+/// For examples look at EventReader and EventWriter.
 pub fn ResourceProxy(comptime T: type) ResourceProxyInfo(T) {
     return .{};
 }
