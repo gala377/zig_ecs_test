@@ -24,7 +24,7 @@ const lua_script = ecs.lua_script;
 
 pub fn installMainLogic(game: *Game) !void {
     std.debug.print("adding systems\n", .{});
-    try game.addSystems(.{
+    try game.addSystems(.update, .{
         system(print_on_button),
         system(call_ref),
         system(spawn_on_click),
@@ -36,7 +36,7 @@ pub fn installMainLogic(game: *Game) !void {
         system(spawn_circle),
         system(add_player),
     });
-    try game.addDefferedSystem(system(finish_run));
+    try game.addSystem(.post_update, finish_run);
 
     std.debug.print("adding resources\n", .{});
     try game.addResource(RunOnce{});
@@ -173,7 +173,7 @@ pub fn installMainLogic(game: *Game) !void {
     }) catch @panic("could not create entoty");
 
     std.debug.print("adding more systems\n", .{});
-    game.addSystems(.{
+    game.addSystems(.update, .{
         system(lua_script.runInitScripts),
         system(lua_script.runUpdateScripts),
     }) catch @panic("could not add system");

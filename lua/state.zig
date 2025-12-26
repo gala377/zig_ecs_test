@@ -124,17 +124,17 @@ pub const LuaState = struct {
             null,
         ));
         std.debug.print("4.5\n", .{});
-        luaCall(self.state, 0, 1);
+        luaCall(self.state, 0, 1) catch @panic("call error");
         std.debug.print("4.6\n", .{});
     }
 
     pub fn call(self: Self, nargs: c_int, nresults: c_int, allocator: std.mem.Allocator) !Value {
-        luaCall(self.state, nargs, nresults);
+        luaCall(self.state, nargs, nresults) catch @panic("call error");
         return self.popTop(allocator);
     }
 
     pub fn callDontPop(self: Self, nargs: c_int, nresults: c_int) void {
-        luaCall(self.state, nargs, nresults);
+        luaCall(self.state, nargs, nresults) catch @panic("call error");
     }
 
     pub fn callGetRef(self: Self, nargs: c_int, nresults: c_int) !Ref {
@@ -246,8 +246,9 @@ fn luaCall(state: *lua.lua_State, nargs: c_int, nresults: c_int) LuaState.LuaErr
     const status = lua.lua_pcallk(state, nargs, nresults, msgh_idx, 0, null);
     if (status != lua.LUA_OK) {
         // The error message + traceback is now at the top of the stack
-        const err_msg = lua.lua_tostring(state, -1);
-        std.debug.print("LUA ERROR: {s}\n", .{err_msg});
+        var len: usize = 0;
+        const err_msg = lua.lua_tolstring(state, -1, &len);
+        std.debug.print("LUA ERROR: {s}\n", .{err_msg[0..len]});
 
         // Remove error message and the handler from stack
         lua.lua_pop(state, 2);

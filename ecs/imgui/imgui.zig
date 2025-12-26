@@ -13,9 +13,9 @@ pub const Options = struct {
 };
 
 pub fn addImguiPlugin(game: *Game, options: Options) !void {
-    try game.addRenderSystem(system(systems.draw_imgui));
+    try game.addSystem(.render, systems.draw_imgui);
     if (options.show_fps) {
-        try game.addRenderSystem(system(showFps));
+        try game.addSystem(.render, showFps);
     }
 }
 

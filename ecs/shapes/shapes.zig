@@ -58,7 +58,7 @@ pub fn draw_rectangle(rectangles: *Query(.{
 pub fn installShapes(
     game: *Game,
 ) !void {
-    try game.addSystems(.{
+    try game.addSystems(.render, .{
         system(draw_circles),
         system(draw_rectangle),
     });

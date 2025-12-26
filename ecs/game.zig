@@ -34,6 +34,7 @@ const Scene = @import("scene.zig").Scene;
 const System = @import("system.zig").System;
 const utils = @import("utils.zig");
 const VTableStorage = @import("comp_vtable_storage.zig");
+const Schedule = @import("schedule.zig");
 
 pub const Size = struct {
     width: i32,
@@ -107,11 +108,8 @@ pub const Game = struct {
     inner_id: usize,
     idprovider: *SimpleIdProvider,
 
-    systems: std.ArrayList(System),
     lua_systems: std.ArrayList(LuaSystem),
-    render_systems: std.ArrayList(System),
-    deffered_systems: std.ArrayList(System),
-    tear_down_system: std.ArrayList(System),
+    schedule: Schedule,
 
     global_entity_storage: entity_storage,
     vtable_storage: *VTableStorage,
@@ -128,16 +126,13 @@ pub const Game = struct {
             .should_close = false,
             .options = options,
             .inner_id = 1,
-            .systems = .empty,
-            .deffered_systems = .empty,
-            .render_systems = .empty,
-            .tear_down_system = .empty,
             .current_scene = null,
             .global_entity_storage = try entity_storage.init(allocator, id_provider.idprovider(), vtable_storage),
             .lua_systems = .empty,
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
             .frame_allocator = .init(std.heap.c_allocator),
+            .schedule = Schedule.init(allocator),
         };
     }
 
@@ -149,31 +144,29 @@ pub const Game = struct {
         rl.initWindow(self.options.window.size.width, self.options.window.size.height, self.options.window.title);
         defer rl.closeWindow();
 
+        self.schedule.runPhase(.setup, self);
+
         // var iters: usize = 1;
         // var total: usize = 0;
         while (!self.should_close) : (self.should_close = rl.windowShouldClose() or self.should_close) {
             // const start = try std.time.Instant.now();
-            rl.beginDrawing();
-            for (self.systems.items) |sys| {
-                sys(self);
-            }
+            self.schedule.runPhase(.update, self);
             for (self.lua_systems.items) |*sys| {
                 sys.run(self) catch {
                     @panic("could not run lua system");
                 };
             }
-            for (self.render_systems.items) |sys| {
-                sys(self);
-            }
+            self.schedule.runPhase(.post_update, self);
+
+            rl.beginDrawing();
+
+            self.schedule.runPhase(.render, self);
+            self.schedule.runPhase(.post_render, self);
+
             rl.clearBackground(.black);
             rl.endDrawing();
 
-            for (self.deffered_systems.items) |sys| {
-                sys(self);
-            }
-            for (self.tear_down_system.items) |sys| {
-                sys(self);
-            }
+            self.schedule.runPhase(.tear_down, self);
         }
     }
 
@@ -184,8 +177,8 @@ pub const Game = struct {
             .allocator = self.frame_allocator.allocator(),
             .arena = &self.frame_allocator,
         });
-        try self.addDefferedSystem(ecs.system(commands_system.create_entities));
-        try self.addTearDownSystem(ecs.system(runtime.allocators.freeFrameAllocator));
+        try self.addSystem(.post_update, commands_system.create_entities);
+        try self.addSystem(.tear_down, runtime.allocators.freeFrameAllocator);
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
@@ -239,23 +232,7 @@ pub const Game = struct {
             runtime.events.EventBuffer(T){ .allocator = self.allocator, .events = &.{} },
             runtime.events.EventWriterBuffer(T){ .allocator = self.allocator, .events = .empty },
         });
-        try self.addDefferedSystem(runtime.events.eventSystem(T));
-    }
-
-    pub fn addSystem(self: *Self, system: System) !void {
-        try self.systems.append(self.allocator, system);
-    }
-
-    pub fn addDefferedSystem(self: *Self, system: System) !void {
-        try self.deffered_systems.append(self.allocator, system);
-    }
-
-    pub fn addRenderSystem(self: *Self, system: System) !void {
-        try self.render_systems.append(self.allocator, system);
-    }
-
-    pub fn addTearDownSystem(self: *Self, system: System) !void {
-        try self.tear_down_system.append(self.allocator, system);
+        try self.addSystems(.tear_down, .{runtime.events.eventSystem(T)});
     }
 
     pub fn addLuaSystem(self: *Self, path: []const u8) !void {
@@ -304,9 +281,13 @@ pub const Game = struct {
         std.debug.print("11\n", .{});
     }
 
-    pub fn addSystems(self: *Self, comptime systems: anytype) !void {
+    pub fn addSystem(self: *Self, phase: Schedule.Phase, comptime sys: anytype) !void {
+        try self.schedule.add(phase, ecs.system(sys));
+    }
+
+    pub fn addSystems(self: *Self, phase: Schedule.Phase, comptime systems: anytype) !void {
         inline for (systems) |s| {
-            try self.addSystem(s);
+            try self.schedule.add(phase, s);
         }
     }
 
@@ -393,10 +374,7 @@ pub const Game = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.systems.deinit(self.allocator);
-        self.deffered_systems.deinit(self.allocator);
-        self.render_systems.deinit(self.allocator);
-        self.tear_down_system.deinit(self.allocator);
+        self.schedule.deinit();
         if (self.current_scene) |*scene| {
             scene.deinit();
         }
@@ -427,7 +405,7 @@ pub const Game = struct {
 pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
     _ = try game.addResource(GameActions{ .should_close = false, .allocator = game.allocator, .log = &.{} });
     _ = try game.addResource(LuaRuntime{ .lua = &game.lua_state });
-    try game.addSystem(&applyGameActions);
+    try game.addSystem(.update, applyGameActions);
     if (export_lua) {
         game.exportComponent(GameActions);
         game.exportComponent(EntityId);
