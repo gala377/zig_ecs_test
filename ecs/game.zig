@@ -299,28 +299,31 @@ pub const Game = struct {
 
     pub fn newGlobalEntity(self: *Self, components: anytype) !EntityId {
         const id = self.newId();
-        const with_id = .{EntityId{
+        const entity_id = EntityId{
             .scene_id = 0,
             .entity_id = id,
-        }} ++ components;
-        try self.global_entity_storage.makeEntity(id, with_id);
-
-        return .{ .scene_id = 0, .entity_id = id };
+            .archetype_id = try self.allocator.create(usize),
+        };
+        if (entity_id.archetype_id) |aid| {
+            aid.* = 0;
+        }
+        const with_id = .{entity_id} ++ components;
+        return self.global_entity_storage.makeEntity(id, with_id);
     }
 
     pub fn removeEntities(self: *Self, ids: []EntityId) !void {
-        var global_entities = std.ArrayList(usize).empty;
+        var global_entities = std.ArrayList(EntityId).empty;
         defer global_entities.deinit(self.allocator);
-        var scene_entities = std.ArrayList(usize).empty;
+        var scene_entities = std.ArrayList(EntityId).empty;
         defer scene_entities.deinit(self.allocator);
         for (ids) |id| {
             if (id.scene_id == 0) {
-                try global_entities.append(self.allocator, id.entity_id);
+                try global_entities.append(self.allocator, id);
                 continue;
             }
             if (self.current_scene) |*scene| {
                 if (scene.id == id.scene_id) {
-                    try scene_entities.append(self.allocator, id.entity_id);
+                    try scene_entities.append(self.allocator, id);
                     continue;
                 }
             }
@@ -338,12 +341,13 @@ pub const Game = struct {
     //
     // Does not take ownership over a slice of components.
     pub fn addComponents(self: *Self, id: EntityId, components: []ComponentWrapper) !void {
+        const archetype_id = id.archetype_id orelse @panic("archetype id is null");
         if (id.scene_id == 0) {
-            try self.global_entity_storage.addComponents(id.entity_id, components);
+            try self.global_entity_storage.addComponents(id.entity_id, archetype_id.*, components);
             return;
         } else if (self.current_scene) |*scene| {
             if (scene.id == id.scene_id) {
-                try scene.entity_storage.addComponents(id.entity_id, components);
+                try scene.entity_storage.addComponents(id.entity_id, archetype_id.*, components);
                 return;
             }
         }

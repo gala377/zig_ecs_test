@@ -3,6 +3,7 @@ const std = @import("std");
 const ComponentId = @import("component.zig").ComponentId;
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 const Entity = @import("entity.zig");
+const EntityId = Entity.EntityId;
 const PtrTuple = @import("utils.zig").PtrTuple;
 const Sorted = @import("utils.zig").Sorted;
 const VTableStorage = @import("comp_vtable_storage.zig");
@@ -40,6 +41,8 @@ pub const ComponentWrapper = struct {
 pub const ArchetypeStorage = struct {
     components: []const ComponentId,
     entities: std.AutoArrayHashMap(usize, Entity),
+    // abstract index used to quickly access archetype
+    archetype_index: usize,
 };
 
 archetypes: std.ArrayList(ArchetypeStorage),
@@ -66,7 +69,7 @@ pub fn init(allocator: std.mem.Allocator, idprovider: utils.IdProvider, vtable_s
     };
 }
 
-pub fn makeEntity(self: *Self, id: usize, components: anytype) !void {
+pub fn makeEntity(self: *Self, id: usize, components: anytype) !EntityId {
     const tinfo = @typeInfo(@TypeOf(components));
     if (comptime tinfo != .@"struct" and !tinfo.@"struct".is_tuple) {
         @compileError("components of an entity have to be passed as a tuple");
@@ -80,83 +83,102 @@ pub fn makeEntity(self: *Self, id: usize, components: anytype) !void {
     }
     var entity = Entity.init(id, self.allocator);
     try entity.addComponents(&componentsStorage);
+    const entity_id_comp: *EntityId = entity.getComponent(EntityId) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
+    std.debug.print("Got entity_id_component {any}", .{entity_id_comp});
     const storage = try self.findOrCreateArchetype(&componentIds);
+    if (entity_id_comp.archetype_id) |aid| {
+        aid.* = storage.archetype_index;
+    } else {
+        @panic("archetype index is null");
+    }
     const putres = try storage.entities.fetchPut(id, entity);
     if (putres) |old| {
         _ = old;
         @panic("replacing existing entity");
     }
+    return entity_id_comp.*;
 }
 
-pub fn removeEntities(self: *Self, ids: []usize) void {
-    for (self.archetypes.items) |*archetype| {
-        for (ids) |id| {
-            if (archetype.entities.getPtr(id)) |entity| {
-                var iter = entity.components.valueIterator();
-                while (iter.next()) |c| {
-                    c.vtable.deinit(c.pointer, self.allocator);
-                    c.vtable.free(c.pointer, self.allocator);
-                }
-                entity.components.deinit();
-                _ = archetype.entities.orderedRemove(id);
+pub fn removeEntities(self: *Self, ids: []EntityId) void {
+    for (ids) |id| {
+        const archetype_id = id.archetype_id orelse @panic("archetype id is null");
+        const archetype = &self.archetypes.items[archetype_id.*];
+        if (archetype.entities.getPtr(id.entity_id)) |entity| {
+            var iter = entity.components.valueIterator();
+            while (iter.next()) |c| {
+                c.vtable.deinit(c.pointer, self.allocator);
+                c.vtable.free(c.pointer, self.allocator);
             }
+            entity.components.deinit();
+            _ = archetype.entities.orderedRemove(id.entity_id);
         }
     }
 }
 
-pub fn addComponents(self: *Self, entity_id: usize, components: []ComponentWrapper) !void {
+pub fn addComponents(self: *Self, entity_id: usize, archetype_id: usize, components: []ComponentWrapper) !void {
     // find entity
-    for (self.archetypes.items) |*archetype| {
-        var e = archetype.entities.fetchOrderedRemove(entity_id) orelse continue;
-        try e.value.addComponents(components);
+    const archetype = &self.archetypes.items[archetype_id];
+    var e = archetype.entities.fetchOrderedRemove(entity_id) orelse return error.entityNotFound;
+    const entity_id_comp: *EntityId = e.value.getComponent(EntityId) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
+    try e.value.addComponents(components);
 
-        const component_ids = try self.allocator.alloc(ComponentId, e.value.components.count());
-        defer self.allocator.free(component_ids);
-        var entity_iter = e.value.components.keyIterator();
-        var i: usize = 0;
-        while (entity_iter.next()) |id| {
-            component_ids[i] = id.*;
-            i += 1;
-        }
-
-        std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
-
-        const new_archetype = try self.findOrCreateArchetype(component_ids);
-        try new_archetype.entities.put(entity_id, e.value);
-        return;
+    const component_ids = try self.allocator.alloc(ComponentId, e.value.components.count());
+    defer self.allocator.free(component_ids);
+    var entity_iter = e.value.components.keyIterator();
+    var i: usize = 0;
+    while (entity_iter.next()) |id| {
+        component_ids[i] = id.*;
+        i += 1;
     }
-    return error.entityNotFound;
+
+    std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
+
+    const new_archetype = try self.findOrCreateArchetype(component_ids);
+    if (entity_id_comp.archetype_id) |aid| {
+        aid.* = new_archetype.archetype_index;
+    } else {
+        @panic("archetype index is null");
+    }
+    try new_archetype.entities.put(entity_id, e.value);
+    return;
 }
 
-pub fn removeComponents(self: *Self, entity_id: usize, components: []ComponentId) !void {
-    for (self.archetypes.items) |*archetype| {
-        const e = archetype.entities.get(entity_id) orelse continue;
-        archetype.entities.remove(entity_id);
+pub fn removeComponents(self: *Self, entity_id: usize, archetype_id: usize, components: []ComponentId) !void {
+    const archetype = &self.archetypes.items[archetype_id];
+    const e = archetype.entities.get(entity_id) orelse return error.entityNotFound;
+    archetype.entities.remove(entity_id);
+    try e.removeComponents(components);
+    const entity_id_comp: *EntityId = e.getComponent(EntityId) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
 
-        try e.removeComponents(components);
-
-        const component_ids = try self.allocator.alloc(ComponentId, e.components.count());
-        defer self.allocator.free(component_ids);
-        var entity_iter = e.components.keyIterator();
-        var i = 0;
-        while (entity_iter.next()) |id| {
-            component_ids[i] = id;
-            i += 1;
-        }
-
-        std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
-
-        const new_archetype = try self.findOrCreateArchetype(component_ids);
-        try new_archetype.entities.put(entity_id, e);
-        return;
+    const component_ids = try self.allocator.alloc(ComponentId, e.components.count());
+    defer self.allocator.free(component_ids);
+    var entity_iter = e.components.keyIterator();
+    var i = 0;
+    while (entity_iter.next()) |id| {
+        component_ids[i] = id;
+        i += 1;
     }
-    return error.entityNotFound;
+
+    std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
+
+    const new_archetype = try self.findOrCreateArchetype(component_ids);
+    if (entity_id_comp.archetype_id) |aid| {
+        aid.* = new_archetype.archetype_index;
+    } else {
+        @panic("archetype index is null");
+    }
+    try new_archetype.entities.put(entity_id, e);
+    return;
 }
 
 pub fn insertEntity(self: *Self, id: usize, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
     var component_ids = try self.allocator.alloc(ComponentId, components.count());
     defer self.allocator.free(component_ids);
-
+    const id_wrapper = components.get(utils.dynamicTypeId(
+        EntityId,
+        self.idprovider,
+    )) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
+    const entity_id_comp: *EntityId = @ptrCast(@alignCast(id_wrapper.pointer));
     var keys = components.keyIterator();
     var idx: usize = 0;
     while (keys.next()) |cid| {
@@ -173,6 +195,11 @@ pub fn insertEntity(self: *Self, id: usize, components: std.AutoHashMap(Componen
         .id = id,
         .components = components,
     };
+    if (entity_id_comp.archetype_id) |aid| {
+        aid.* = archetype.archetype_index;
+    } else {
+        @panic("arhechetype id is null");
+    }
     try archetype.entities.put(id, entity);
 }
 
@@ -188,9 +215,11 @@ fn createArchetype(self: *Self, ids: Sorted([]ComponentId)) !*ArchetypeStorage {
     // creating archetype invalidates cache
     self.invalidateCache();
     const heaped = try self.allocator.dupe(ComponentId, ids);
+    const archetype_index = self.archetypes.items.len;
     const new = ArchetypeStorage{
         .components = heaped,
         .entities = .init(self.allocator),
+        .archetype_index = archetype_index,
     };
     try self.archetypes.append(self.allocator, new);
     try self.components_per_archetype.append(self.allocator, heaped);

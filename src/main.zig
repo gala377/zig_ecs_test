@@ -43,13 +43,13 @@ fn runGame(allocator: std.mem.Allocator) !void {
     });
     defer game.deinit();
 
+    const scene = try game.newScene();
+    try game.setInitialScene(scene);
+
     try ecs.game.addDefaultPlugins(&game, true);
     try imgui.addImguiPlugin(&game, .{ .show_fps = true });
     try imgui.exportLua(&game);
     try logic.installMainLogic(&game);
-
-    const scene = try game.newScene();
-    try game.setInitialScene(scene);
 
     try game.run();
 }

@@ -35,8 +35,14 @@ pub const Scene = struct {
 
     pub fn newEntity(self: *Self, comps: anytype) !EntityId {
         const id = self.newId();
-        try self.entity_storage.makeEntity(id, comps);
-        return .{ .scene_id = self.inner_id, .entity_id = id };
+        const entity_id = EntityId{
+            .scene_id = self.id,
+            .entity_id = id,
+            .archetype_id = try self.scene_allocator.create(usize),
+        };
+        const with_id = .{entity_id} ++ comps;
+        try self.entity_storage.makeEntity(id, with_id);
+        return entity_id;
     }
 
     pub fn newId(self: *Self) usize {

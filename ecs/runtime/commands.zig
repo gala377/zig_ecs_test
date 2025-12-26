@@ -111,6 +111,7 @@ pub fn addSceneEntity(self: *Self, components: []ComponentWrapper) !void {
     const id = EntityId{
         .entity_id = entity_id,
         .scene_id = cscene.id,
+        .archetype_id = try cscene.scene_allocator.create(usize),
     };
     return try self.addEntity(id, components);
 }
@@ -131,6 +132,7 @@ pub fn newSceneEntity(self: *Self, components: anytype) !EntityId {
     const id = EntityId{
         .entity_id = entity_id,
         .scene_id = cscene.id,
+        .archetype_id = try cscene.scene_allocator.create(usize),
     };
     var componentsStorage: [infoStruct.fields.len + 1]ComponentWrapper = undefined;
     componentsStorage[0] = try cscene.entity_storage.allocComponent(id);
@@ -152,6 +154,7 @@ pub fn newGlobalEntity(self: *Self, components: anytype) !EntityId {
     componentsStorage[0] = try self.game.global_entity_storage.allocComponent(EntityId{
         .entity_id = entity_id,
         .scene_id = 0,
+        .archetype_id = self.game.allocator.create(usize),
     });
     inline for (components, 1..) |comp, index| {
         componentsStorage[index] = try self.game.global_entity_storage.allocComponent(comp);
@@ -163,6 +166,7 @@ pub fn addGlobalEntity(self: *Self, entity_id: usize, components: []ComponentWra
     const id = EntityId{
         .entity_id = entity_id,
         .scene_id = 0,
+        .archetype_id = try self.game.allocator.create(usize),
     };
     try self.addEntity(id, components);
     return entity_id;

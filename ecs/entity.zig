@@ -4,12 +4,24 @@ const lua = @import("lua_lib");
 const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
 const ComponentId = @import("component.zig").ComponentId;
 const component = @import("component.zig");
+const utils = @import("utils.zig");
 
 pub const EntityId = struct {
     pub const component_info = component.LibComponent(component_prefix, EntityId);
-    pub const lua_info = component.ExportLua(EntityId, .{});
+    pub const lua_info = component.ExportLua(EntityId, .{"archetype_id"});
     scene_id: usize,
     entity_id: usize,
+    // for faster archetype lookup. Gives us O(1) complexity to retrieve
+    // entity with this instead of O(n) where n is a number of archetypes
+    // we keep it as a pointer so that copying entity_id will see changes
+    // in the archetype_id
+    archetype_id: ?*usize = null,
+
+    pub fn deinit(self: *EntityId, allocator: std.mem.Allocator) void {
+        if (self.archetype_id) |id| {
+            allocator.destroy(id);
+        }
+    }
 };
 
 const Self = @This();
@@ -22,6 +34,11 @@ pub fn init(id: usize, allocator: std.mem.Allocator) Self {
         .id = id,
         .components = .init(allocator),
     };
+}
+
+pub fn getComponent(self: *Self, comptime T: type) ?*T {
+    const wrapper = self.components.get(utils.dynamicTypeId(T, null)) orelse return null;
+    return @ptrCast(@alignCast(wrapper.pointer));
 }
 
 pub fn addComponents(self: *Self, components: []ComponentWrapper) !void {
