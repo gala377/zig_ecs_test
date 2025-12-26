@@ -1,17 +1,18 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
+const clua = @import("lua_lib").clib;
+
+const assertSorted = @import("utils.zig").assertSorted;
 const ComponentId = @import("component.zig").ComponentId;
 const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
 const Entity = @import("entity.zig");
 const EntityId = Entity.EntityId;
 const PtrTuple = @import("utils.zig").PtrTuple;
-const Sorted = @import("utils.zig").Sorted;
-const VTableStorage = @import("comp_vtable_storage.zig");
 const QueryIter = @import("query.zig").QueryIter;
-const assertSorted = @import("utils.zig").assertSorted;
-const builtin = @import("builtin");
-const clua = @import("lua_lib").clib;
+const Sorted = @import("utils.zig").Sorted;
 const utils = @import("utils.zig");
+const VTableStorage = @import("comp_vtable_storage.zig");
 
 const Self = @This();
 

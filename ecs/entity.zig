@@ -1,9 +1,11 @@
 const std = @import("std");
 const component_prefix = @import("build_options").components_prefix;
+
 const lua = @import("lua_lib");
-const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
-const ComponentId = @import("component.zig").ComponentId;
+
 const component = @import("component.zig");
+const ComponentId = @import("component.zig").ComponentId;
+const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
 const utils = @import("utils.zig");
 
 pub const EntityId = struct {
