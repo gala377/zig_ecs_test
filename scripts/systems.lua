@@ -5,6 +5,7 @@ local Button = ecs.imgui.components.Button
 local GameActions = ecs.runtime.game_actions
 local ButtonClose = logic.ButtonClose
 local ButtonOpen = logic.ButtonOpen
+local Foo = logic.Foo
 
 local function close_run(button, actions)
 	local close_button, _ = query.single(button)
@@ -13,10 +14,15 @@ local function close_run(button, actions)
 	end
 end
 
-local function click_run(buttons, _)
+local function click_run(buttons, foos, _)
 	for button in query.iter(buttons) do
 		if button.clicked then
 			print("Button clicked from lua")
+			print("got at position " .. tostring(button.pos.x) .. ", " .. tostring(button.pos.y))
+			local foo = query.single(foos)
+			local bar = foo.bar
+			print("foo info " .. tostring(bar.x) .. ", " .. tostring(bar.y))
+			bar.x = bar.x + 1
 		end
 	end
 end
@@ -30,7 +36,7 @@ local function change_title(buttons)
 end
 
 return {
-	system.new(click_run, "click logger"):arguments({ Button }, GameActions),
+	system.new(click_run, "click logger"):arguments({ Button }, { Foo }, GameActions),
 	system.new(close_run, "close on click"):arguments({ Button, ButtonClose }, GameActions),
 	system.new(change_title, "change button title"):arguments { Button, ButtonOpen },
 }

@@ -178,6 +178,9 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                             if (comptime ptr.size == .c and ptr.child == u8) {
                                 @compileError("type has an exported field " ++ f.name ++ " that requires allocation but is missing an allocator field");
                             }
+                            if (comptime ptr.size == .one and isLuaSupported(ptr.child)) {
+                                @compileError("type has an exported field " ++ f.name ++ " that requires allocation but is missing an allocator field");
+                            }
                         },
                         else => {},
                     }
@@ -249,18 +252,18 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             const luaField = clua.lua_tolstring(state, 2, null);
             inline for (fields) |f| {
                 const asSlice = std.mem.sliceTo(luaField, 0);
-                // TODO: We need special handling for fields that are struct/pointer to structs that
-                // are also lua supported as we can read them by calling their luaPush impl
-                if (isLuaSupported(f.type) and std.mem.eql(u8, f.name, asSlice) and !isIgnoredField(f.name)) {
-                    const allocator: ?std.mem.Allocator = if (comptime @hasField(T, "allocator")) ptr.allocator else null;
-                    luaPushValue(
-                        f.type,
-                        state,
-                        &@field(ptr, f.name),
-                        allocator,
-                    ) catch {
-                        unreachable;
-                    };
+                if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
+                    if (std.mem.eql(u8, f.name, asSlice)) {
+                        const allocator: ?std.mem.Allocator = if (comptime @hasField(T, "allocator")) ptr.allocator else null;
+                        luaPushValue(
+                            f.type,
+                            state,
+                            &@field(ptr, f.name),
+                            allocator,
+                        ) catch {
+                            unreachable;
+                        };
+                    }
                 }
             }
             return 1;
@@ -286,7 +289,11 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                             // TODO: this has to be recusrive, like if elements of the slice need freeing
                             // we should free them too. It could habe arbitrary level of nesting
                             // like a list of stucts that have strings
-                            ptr.allocator.free(@field(ptr, f.name));
+                            if (comptime @typeInfo(f.type).pointer.size == .one) {
+                                ptr.allocator.destroy(@field(ptr, f.name));
+                            } else {
+                                ptr.allocator.free(@field(ptr, f.name));
+                            }
                         }
                         @field(ptr, f.name) = val;
                     }
@@ -501,6 +508,19 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
         } else if (ptr.size == .c and ptr.child == u8) {
             return error.cStringsUnsupported;
             // its a string thats a problem, we need to do allocation
+        } else if (ptr.size == .one and isLuaSupported(ptr.child)) {
+            const value = try luaReadValue(state, ptr.child, index, allocator);
+            const obj: *ptr.child = try allocator.?.create(ptr.child);
+            obj.* = value;
+            return obj;
+        } else {
+            return error.unsupportedType;
+        },
+        .@"struct" => if (isLuaSupported(field_type)) {
+            // TODO: allow setting this field from lua
+            // we need to check if tehis field is userdata. If so just assing pointer
+            // or if it is table we need something like FromLua method for components
+            return error.unsupportedType;
         } else {
             return error.unsupportedType;
         },
@@ -516,7 +536,14 @@ fn isLuaSupported(comptime t: type) bool {
     return switch (@typeInfo(t)) {
         .bool, .int, .float => true,
         .optional => |opt| isLuaSupported(opt.child),
-        .pointer => |ptr| (ptr.size == .slice and isLuaSupported(ptr.child)) or (ptr.size == .c and ptr.child == u8),
+        .pointer => |ptr| (
+            // slices support
+            ptr.size == .slice and isLuaSupported(ptr.child)) or (
+            // cstrings
+            ptr.size == .c and ptr.child == u8) or (
+            // pointers to lua supported types
+            ptr.size == .one and isLuaSupported(ptr.child)),
+        .@"struct" => @hasDecl(t, "lua_info"),
         else => false,
     };
 }
@@ -557,6 +584,13 @@ fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Al
             }
         } else if (ptr.size == .c and ptr.child == u8) {
             _ = clua.lua_pushstring(state, @ptrCast(val.*));
+        } else if (ptr.size == .one and isLuaSupported(ptr.child)) {
+            try luaPushValue(ptr.child, state, val.*, allocator);
+        } else {
+            return error.unsupportedType;
+        },
+        .@"struct" => if (isLuaSupported(T)) {
+            @TypeOf(T.lua_info).luaPush(val, state);
         } else {
             return error.unsupportedType;
         },

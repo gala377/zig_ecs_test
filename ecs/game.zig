@@ -35,6 +35,7 @@ const System = @import("system.zig").System;
 const utils = @import("utils.zig");
 const VTableStorage = @import("comp_vtable_storage.zig");
 const Schedule = @import("schedule.zig");
+const core = @import("core/core.zig");
 
 pub const Size = struct {
     width: i32,
@@ -409,6 +410,10 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
     if (export_lua) {
         game.exportComponent(GameActions);
         game.exportComponent(EntityId);
+        game.exportComponent(core.Vec2);
+        game.exportComponent(core.Position);
+        game.exportComponent(core.Style);
+        game.exportComponent(core.Color);
         game.idprovider.exportIdFunction(@ptrCast(game.lua_state.state));
         DynamicQuery.registerMetaTable(game.lua_state);
     }

@@ -44,6 +44,8 @@ pub fn installMainLogic(game: *Game) !void {
     std.debug.print("exporting components\n", .{});
     game.exportComponent(ButtonOpen);
     game.exportComponent(ButtonClose);
+    game.exportComponent(Bar);
+    game.exportComponent(Foo);
 
     std.debug.print("adding lua systems\n", .{});
     try game.addLuaSystems("scripts/systems.lua");
@@ -139,6 +141,13 @@ pub fn installMainLogic(game: *Game) !void {
             .allocator = game.allocator,
         },
         ButtonAddPlayer{},
+    });
+
+    const bar = try game.allocator.create(Bar);
+    bar.* = .{ .x = 1, .y = 100 };
+    const foo: Foo = .{ .bar = bar, .allocator = game.allocator };
+    _ = try game.newGlobalEntity(.{
+        foo,
     });
 
     std.debug.print("adding shapes\n", .{});
@@ -357,6 +366,26 @@ const Position = ecs.core.Position;
 pub const RunOnce = struct {
     pub const component_info = Component(RunOnce);
     already_run: bool = false,
+};
+
+pub const Foo = struct {
+    pub const component_info = Component(Foo);
+    pub const lua_info = ExportLua(Foo, .{"allocator"});
+
+    bar: *Bar,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *Foo, _: std.mem.Allocator) void {
+        self.allocator.destroy(self.bar);
+    }
+};
+
+pub const Bar = struct {
+    pub const component_info = Component(Bar);
+    pub const lua_info = ExportLua(Bar, .{});
+
+    x: isize,
+    y: isize,
 };
 
 pub const PlayerMarker = struct {
