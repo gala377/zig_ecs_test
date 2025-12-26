@@ -8,8 +8,30 @@
 - exposing a lot of fields to lua
 - wrapper for slices 
 - events - for now not exposed to lua 
+- WithOut filter 
+- yield-dispatch in lua 
 
 ## What next
+
+- better system abstraction.
+  - something that abstracts both LuaSystems and normal systems.
+    `const System = struct { ctx: *anyopaque, run: *fn(*ctx, *Game) }`
+    normal systems can have context as null be we can also store 
+    local system parameters by generating a tuple for them there and casting 
+    before invoking system
+    
+    Also this would allow lua systems to be added to schedule phases
+
+- exposing native functions to lua.
+  - something that will allow us to define func 
+   `fn foo(s: Lua(String), n: Lua(isize), query: *Query({Button}))`
+   and expose it lua as a `foo(string, integer)` that will return a
+   value to lua by yield dispatch.
+
+   This is for lua systems and lua scripts.
+
+- system builder
+  - something like `system(func).run_if(cond)`
 
 - creating components/entities in lua [[#Exposing constructors to lua]]
 - exposing Commands to lua [[#Exposing constructors to lua]]
@@ -18,6 +40,7 @@
   its type. Its from lua implementation would be just getting the ref and toLua would 
   just be pushing the ref.
 - exposing events in lua
+- exposing methods to lua
 
 ### Exposing more types to lua
 
