@@ -1,6 +1,7 @@
 ---@alias Button ecs.imgui.components.Button
 ---@alias GameActions ecs.runtime.components.GameActions
 ---@alias ButtonClose logic.ButtonClose
+---@alias ButtonOpen logic.ButtonOpen
 
 local query = require("scripts.lib.query")
 local system = require("scripts.lib.system")
@@ -31,11 +32,10 @@ local function click_run(buttons, actions)
 end
 
 local called = 1
----@param buttons Query<[Button, logic.ButtonOpen]>
+---@param buttons Query<[Button, ButtonOpen]>
 local function change_title(buttons)
 	local button, _ = query.single(buttons)
-	---@cast button Button
-	if button.clicked then
+	if button ~= nil and button.clicked then
 		called = called + 1
 	end
 end
