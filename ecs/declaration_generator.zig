@@ -1,7 +1,8 @@
 const std = @import("std");
-const Self = @This();
-const EventBuffer = @import("runtime/components.zig").EventBuffer;
 
+const EventBuffer = @import("runtime/events.zig").EventBuffer;
+
+const Self = @This();
 comp_names: std.StringHashMap(void),
 generators: std.ArrayList(*const fn (std.io.AnyWriter) anyerror!void),
 types_path: []const u8,

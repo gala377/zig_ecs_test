@@ -8,10 +8,10 @@ const Component = @import("component.zig").Component;
 const Query = @import("game.zig").Query;
 const Without = @import("game.zig").Without;
 const Resource = @import("resource.zig").Resource;
-const LuaRuntime = ecs.runtime.components.LuaRuntime;
+const LuaRuntime = ecs.runtime.lua_runtime;
 const Commands = ecs.Commands;
 const EntityId = ecs.EntityId;
-const FrameAllocator = ecs.runtime.components.FrameAllocator;
+const FrameAllocator = ecs.runtime.allocators.FrameAllocator;
 
 pub const Initialized = struct {
     pub const component_info = Component(Initialized);

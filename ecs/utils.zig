@@ -1,32 +1,6 @@
 const std = @import("std");
 const ComponentId = @import("component.zig").ComponentId;
 
-pub const Vec2 = struct {
-    x: f32,
-    y: f32,
-
-    pub fn add(self: Vec2, other: Vec2) Vec2 {
-        return .{
-            .x = self.x + other.x,
-            .y = self.y + other.y,
-        };
-    }
-
-    pub fn add_x(self: Vec2, value: f32) Vec2 {
-        return .{
-            .x = self.x + value,
-            .y = self.y,
-        };
-    }
-
-    pub fn add_y(self: Vec2, value: f32) Vec2 {
-        return .{
-            .x = self.x,
-            .y = self.y + value,
-        };
-    }
-};
-
 pub fn assertSorted(comptime T: type, s: []T) Sorted([]T) {
     if (s.len != 0) {
         for (1..s.len) |idx| {

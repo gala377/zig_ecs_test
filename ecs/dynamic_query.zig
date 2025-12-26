@@ -1,11 +1,13 @@
-const Storage = @import("entity_storage.zig");
-const ComponentId = @import("component.zig").ComponentId;
-const LuaPush = @import("entity_storage.zig").ComponentLuaPush;
 const std = @import("std");
-const Entity = @import("entity.zig");
-const utils = @import("utils.zig");
+
 const lua = @import("lua_lib");
 const clua = lua.clib;
+
+const ComponentId = @import("component.zig").ComponentId;
+const Entity = @import("entity.zig");
+const LuaPush = @import("entity_storage.zig").ComponentLuaPush;
+const Storage = @import("entity_storage.zig");
+const utils = @import("utils.zig");
 
 // Because dunamic query cannot decide the amount of components at comptime
 // the returned components are returned as a slice allocated by the iterator.
@@ -144,7 +146,7 @@ pub const DynamicQueryIter = struct {
 
     pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
         // std.debug.print("calling next in zig\n", .{});
-        const ptr: *utils.ZigPointer(Self) = @alignCast(@ptrCast(clua.lua_touserdata(state, 1)));
+        const ptr: *utils.ZigPointer(Self) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
         const self = ptr.ptr;
         const rest = self.next();
         if (rest == null) {

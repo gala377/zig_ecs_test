@@ -109,9 +109,13 @@ pub const LuaState = struct {
     }
 
     pub fn loadWithName(self: Self, code: []const u8, name: []const u8) !void {
+        std.debug.print("4.1\n", .{});
         var reader = ReaderCtx{ .data = code, .last_read = 0 };
+        std.debug.print("4.2\n", .{});
         const chunkname = try self.context.allocator.dupeZ(u8, name);
+        std.debug.print("4.3\n", .{});
         defer self.context.allocator.free(chunkname);
+        std.debug.print("4.4\n", .{});
         try errorFromInt(lua.lua_load(
             self.state,
             @ptrCast(&sliceReader),
@@ -119,7 +123,9 @@ pub const LuaState = struct {
             @ptrCast(chunkname),
             null,
         ));
+        std.debug.print("4.5\n", .{});
         luaCall(self.state, 0, 1);
+        std.debug.print("4.6\n", .{});
     }
 
     pub fn call(self: Self, nargs: c_int, nresults: c_int, allocator: std.mem.Allocator) !Value {
@@ -227,8 +233,28 @@ fn sliceReader(state: ?*lua.lua_State, data: *ReaderCtx, size: [*c]usize) callco
     return data.data.ptr;
 }
 
-fn luaCall(state: *lua.lua_State, nargs: c_int, nresults: c_int) void {
-    lua.lua_callk(state, nargs, nresults, 0, null);
+fn luaCall(state: *lua.lua_State, nargs: c_int, nresults: c_int) LuaState.LuaError!void {
+    // get traceback and place it under the function
+    const func_idx = lua.lua_gettop(state) - nargs;
+    _ = lua.lua_getglobal(state, "debug");
+    _ = lua.lua_getfield(state, -1, "traceback");
+    lua.lua_remove(state, -2); // remove 'debug' table, leave 'traceback' function
+
+    // Move the handler to sit right before the function
+    lua.lua_insert(state, func_idx);
+    const msgh_idx = func_idx;
+    const status = lua.lua_pcallk(state, nargs, nresults, msgh_idx, 0, null);
+    if (status != lua.LUA_OK) {
+        // The error message + traceback is now at the top of the stack
+        const err_msg = lua.lua_tostring(state, -1);
+        std.debug.print("LUA ERROR: {s}\n", .{err_msg});
+
+        // Remove error message and the handler from stack
+        lua.lua_pop(state, 2);
+        return LuaState.LuaError.errRun;
+    }
+    // remove error handler from the stack
+    lua.lua_remove(state, msgh_idx);
 }
 
 fn luaToNumber(state: *lua.lua_State, idx: c_int) lua.lua_Number {

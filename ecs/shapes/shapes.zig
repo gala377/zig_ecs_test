@@ -1,13 +1,16 @@
-const Component = @import("../component.zig").LibComponent;
-const component_prefix = @import("build_options").components_prefix;
-const Query = @import("../game.zig").Query;
-const Position = @import("../core/position.zig");
-const Style = @import("../core/style.zig");
-const Color = @import("../core/color.zig");
+const std = @import("std");
 const rl = @import("raylib");
+
+const component_prefix = @import("build_options").components_prefix;
+
+const core = @import("../core/core.zig");
+const Component = @import("../component.zig").LibComponent;
+const Color = core.Color;
+const Position = core.Position;
+const Style = core.Style;
+const Query = @import("../game.zig").Query;
 const Game = @import("../game.zig").Game;
 const system = @import("../system.zig").system;
-const std = @import("std");
 
 pub const Circle = struct {
     pub const component_info = Component(component_prefix, Circle);

@@ -9,31 +9,6 @@ const ResourceProxy = @import("../mapped.zig").ResourceProxy;
 const Resource = @import("../resource.zig").Resource;
 const Game = @import("../game.zig").Game;
 
-pub const GameActions = struct {
-    pub const component_info = Component(component_prefix, GameActions);
-    pub const lua_info = ExportLua(GameActions, .{});
-
-    should_close: bool,
-    log: [][]const u8,
-    allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *GameActions, allocator: std.mem.Allocator) void {
-        _ = allocator;
-        for (self.log) |log| {
-            self.allocator.free(log);
-        }
-        if (self.log.len > 0) {
-            self.allocator.free(self.log);
-        }
-    }
-};
-
-pub const LuaRuntime = struct {
-    pub const component_info = Component(component_prefix, LuaRuntime);
-
-    lua: *lua.State,
-};
-
 pub fn EventBuffer(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -139,24 +114,4 @@ pub fn eventSystem(comptime T: type) *const fn (*Game) void {
             // nothing to copy, nothing to free
         }
     }.call;
-}
-
-// Global allocator to be used by persisting allocations
-pub const GlobalAllocator = struct {
-    pub const component_info = Component(component_prefix, GlobalAllocator);
-
-    allocator: std.mem.Allocator,
-};
-
-// Frame allocator, freed after every frame
-pub const FrameAllocator = struct {
-    pub const component_info = Component(component_prefix, FrameAllocator);
-
-    allocator: std.mem.Allocator,
-    arena: *std.heap.ArenaAllocator,
-};
-
-pub fn freeFrameAllocator(allocator_res: Resource(FrameAllocator)) void {
-    const allocator = allocator_res.get();
-    _ = allocator.arena.reset(.retain_capacity);
 }

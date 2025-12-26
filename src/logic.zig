@@ -5,15 +5,15 @@ const lua = @import("lua_lib");
 
 const Component = ecs.Component;
 const Game = ecs.Game;
-const GameActions = ecs.runtime.components.GameActions;
-const LuaRuntime = ecs.runtime.components.LuaRuntime;
-const EventReader = ecs.runtime.components.EventReader;
-const EventWriter = ecs.runtime.components.EventWriter;
+const GameActions = ecs.runtime.game_actions;
+const LuaRuntime = ecs.runtime.lua_runtime;
+const EventReader = ecs.runtime.events.EventReader;
+const EventWriter = ecs.runtime.events.EventWriter;
 const Query = ecs.Query;
 const system = ecs.system;
 const imgui = ecs.imgui;
 const Button = imgui.components.Button;
-const Vec2 = ecs.utils.Vec2;
+const Vec2 = ecs.core.Vec2;
 const Resource = ecs.Resource;
 const ExportLua = ecs.component.ExportLua;
 const scene = ecs.scene;
@@ -23,6 +23,7 @@ const Without = ecs.game.Without;
 const lua_script = ecs.lua_script;
 
 pub fn installMainLogic(game: *Game) !void {
+    std.debug.print("adding systems\n", .{});
     try game.addSystems(.{
         system(print_on_button),
         system(call_ref),
@@ -36,12 +37,18 @@ pub fn installMainLogic(game: *Game) !void {
         system(add_player),
     });
     try game.addDefferedSystem(system(finish_run));
+
+    std.debug.print("adding resources\n", .{});
     try game.addResource(RunOnce{});
 
+    std.debug.print("exporting components\n", .{});
     game.exportComponent(ButtonOpen);
     game.exportComponent(ButtonClose);
+
+    std.debug.print("adding lua systems\n", .{});
     try game.addLuaSystems("scripts/systems.lua");
 
+    std.debug.print("adding lua callback\n", .{});
     const ref = try game.luaLoad(
         \\ return function(button)
         \\  print("visible = " .. tostring(button.visible));
@@ -57,6 +64,7 @@ pub fn installMainLogic(game: *Game) !void {
     const spawn_title: [:0]u8 = try game.allocator.dupeZ(u8, "Spawn Title");
     const remove_last_title: [:0]u8 = try game.allocator.dupeZ(u8, "Remove last title");
 
+    std.debug.print("adding entities\n", .{});
     const buttons_size = Vec2{ .x = 100.0, .y = 25.0 };
     const position = Vec2{ .x = 50.0, .y = 50.0 };
     _ = try game.newGlobalEntity(.{
@@ -132,9 +140,14 @@ pub fn installMainLogic(game: *Game) !void {
         },
         ButtonAddPlayer{},
     });
+
+    std.debug.print("adding shapes\n", .{});
     try ecs.shapes.installShapes(game);
+
+    std.debug.print("adding event\n", .{});
     try game.addEvent(MyEvent);
 
+    std.debug.print("adding lua script\n", .{});
     const object = game.luaLoad(
         \\ local f = {}
         \\ function f:Init()
@@ -158,10 +171,14 @@ pub fn installMainLogic(game: *Game) !void {
     _ = game.newGlobalEntity(.{
         script,
     }) catch @panic("could not create entoty");
+
+    std.debug.print("adding more systems\n", .{});
     game.addSystems(.{
         system(lua_script.runInitScripts),
         system(lua_script.runUpdateScripts),
     }) catch @panic("could not add system");
+
+    std.debug.print("done... running\n", .{});
 }
 
 pub const MyEvent = usize;

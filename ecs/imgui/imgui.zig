@@ -1,10 +1,12 @@
+const std = @import("std");
+
+const rl = @import("raylib");
+
+const DeclarationGenerator = @import("../declaration_generator.zig");
+const Game = @import("../root.zig").Game;
+const system = @import("../root.zig").system;
 pub const components = @import("components.zig");
 pub const systems = @import("systems.zig");
-const Game = @import("../root.zig").Game;
-const DeclarationGenerator = @import("../declaration_generator.zig");
-const system = @import("../root.zig").system;
-const rl = @import("raylib");
-const std = @import("std");
 
 pub const Options = struct {
     show_fps: bool = false,

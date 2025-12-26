@@ -1,7 +1,8 @@
 const Game = @import("game.zig").Game;
-const System = @import("game.zig").System;
 const std = @import("std");
 const utils = @import("utils.zig");
+
+pub const System = *const fn (game: *Game) void;
 
 pub fn chain(comptime systems: anytype) System {
     return struct {

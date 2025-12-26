@@ -1,9 +1,11 @@
+const std = @import("std");
+
 const lua = @import("lua_lib");
 const clua = lua.clib;
-const std = @import("std");
-const utils = @import("utils.zig");
-const entity_storage = @import("entity_storage.zig");
+
 const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
+const entity_storage = @import("entity_storage.zig");
+const utils = @import("utils.zig");
 
 pub const ComponentId = u64;
 

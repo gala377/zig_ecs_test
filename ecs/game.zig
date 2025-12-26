@@ -1,38 +1,39 @@
 const std = @import("std");
 const component_prefix = @import("build_options").components_prefix;
+const ecs = @import("root.zig");
 
 const lua = @import("lua_lib");
 const clua = lua.clib;
 const rg = @import("raygui");
 const rl = @import("raylib");
 
-const runtime = @import("runtime/components.zig");
-const Component = @import("component.zig").LibComponent;
-const ComponentId = @import("component.zig").ComponentId;
-const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
+const component_mod = ecs.component;
+const Component = component_mod.LibComponent;
+const ComponentId = component_mod.ComponentId;
 const DeclarationGenerator = @import("declaration_generator.zig");
-const DynamicQueryIter = @import("dynamic_query.zig").DynamicQueryIter;
-const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
-const DynamicScopeOptions = @import("entity_storage.zig").DynamicScopeOptions;
-const Entity = @import("entity.zig");
+const dynamic_query = @import("dynamic_query.zig");
+const DynamicQueryIter = dynamic_query.DynamicQueryIter;
+const DynamicQueryScope = dynamic_query.DynamicQueryScope;
+const LuaAccessibleOpaqueComponent = dynamic_query.LuaAccessibleOpaqueComponent;
+const Entity = ecs.entity;
 const EntityId = Entity.EntityId;
-const EntityStorage = @import("entity_storage.zig");
-const ExportLua = @import("component.zig").ExportLua;
-const VTableStorage = @import("comp_vtable_storage.zig");
-const LuaAccessibleOpaqueComponent = @import("dynamic_query.zig").LuaAccessibleOpaqueComponent;
+const entity_storage = @import("entity_storage.zig");
+const ComponentWrapper = entity_storage.ComponentWrapper;
+const DynamicScopeOptions = entity_storage.DynamicScopeOptions;
+const ExportLua = component_mod.ExportLua;
 const LuaSystem = @import("lua_system.zig");
 const PtrTuple = @import("utils.zig").PtrTuple;
-const Resource = @import("resource.zig").Resource;
-const Scene = @import("scene.zig").Scene;
-const commands = @import("runtime/commands.zig");
-const commands_system = @import("runtime/commands_system.zig");
-const component_mod = @import("component.zig");
-const mksystem = @import("system.zig").system;
-const utils = @import("utils.zig");
 const QueryIter = @import("query.zig").QueryIter;
-
-const GameActions = @import("runtime/components.zig").GameActions;
-const LuaRuntime = @import("runtime/components.zig").LuaRuntime;
+const Resource = @import("resource.zig").Resource;
+const runtime = ecs.runtime;
+const GameActions = runtime.game_actions;
+const LuaRuntime = runtime.lua_runtime;
+const commands = runtime.commands;
+const commands_system = runtime.commands_system;
+const Scene = @import("scene.zig").Scene;
+const System = @import("system.zig").System;
+const utils = @import("utils.zig");
+const VTableStorage = @import("comp_vtable_storage.zig");
 
 pub const Size = struct {
     width: i32,
@@ -56,8 +57,6 @@ pub const Options = struct {
 };
 
 pub const Sentinel = usize;
-
-pub const System = *const fn (game: *Game) void;
 
 const SimpleIdProvider = struct {
     inner: usize = 0,
@@ -114,7 +113,7 @@ pub const Game = struct {
     deffered_systems: std.ArrayList(System),
     tear_down_system: std.ArrayList(System),
 
-    global_entity_storage: EntityStorage,
+    global_entity_storage: entity_storage,
     vtable_storage: *VTableStorage,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
@@ -134,7 +133,7 @@ pub const Game = struct {
             .render_systems = .empty,
             .tear_down_system = .empty,
             .current_scene = null,
-            .global_entity_storage = try EntityStorage.init(allocator, id_provider.idprovider(), vtable_storage),
+            .global_entity_storage = try entity_storage.init(allocator, id_provider.idprovider(), vtable_storage),
             .lua_systems = .empty,
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
@@ -159,7 +158,7 @@ pub const Game = struct {
                 sys(self);
             }
             for (self.lua_systems.items) |*sys| {
-                sys.run(self, self.lua_state) catch {
+                sys.run(self) catch {
                     @panic("could not run lua system");
                 };
             }
@@ -180,13 +179,13 @@ pub const Game = struct {
 
     fn installRuntime(self: *Self) !void {
         try self.addResource(commands.init(self, self.allocator));
-        try self.addResource(runtime.GlobalAllocator{ .allocator = self.allocator });
-        try self.addResource(runtime.FrameAllocator{
+        try self.addResource(runtime.allocators.GlobalAllocator{ .allocator = self.allocator });
+        try self.addResource(runtime.allocators.FrameAllocator{
             .allocator = self.frame_allocator.allocator(),
             .arena = &self.frame_allocator,
         });
-        try self.addDefferedSystem(mksystem(commands_system.create_entities));
-        try self.addTearDownSystem(mksystem(runtime.freeFrameAllocator));
+        try self.addDefferedSystem(ecs.system(commands_system.create_entities));
+        try self.addTearDownSystem(ecs.system(runtime.allocators.freeFrameAllocator));
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
@@ -237,10 +236,10 @@ pub const Game = struct {
 
     pub fn addEvent(self: *Self, comptime T: type) !void {
         _ = try self.newGlobalEntity(.{
-            runtime.EventBuffer(T){ .allocator = self.allocator, .events = &.{} },
-            runtime.EventWriterBuffer(T){ .allocator = self.allocator, .events = .empty },
+            runtime.events.EventBuffer(T){ .allocator = self.allocator, .events = &.{} },
+            runtime.events.EventWriterBuffer(T){ .allocator = self.allocator, .events = .empty },
         });
-        try self.addDefferedSystem(runtime.eventSystem(T));
+        try self.addDefferedSystem(runtime.events.eventSystem(T));
     }
 
     pub fn addSystem(self: *Self, system: System) !void {
@@ -272,23 +271,37 @@ pub const Game = struct {
     }
 
     pub fn addLuaSystems(self: *Self, path: []const u8) !void {
+        std.debug.print("1\n", .{});
         const cwd = std.fs.cwd();
 
+        std.debug.print("2\n", .{});
         var file = try cwd.openFile(path, .{});
+        std.debug.print("3\n", .{});
         defer file.close();
         const contents = try file.readToEndAlloc(self.allocator, std.math.maxInt(usize));
+        std.debug.print("4\n", .{});
         defer self.allocator.free(contents);
-        try self.lua_state.loadWithName(contents, path);
+        self.lua_state.loadWithName(contents, path) catch |err| {
+            std.debug.print("got arror when loading lua thing {any}\n", .{err});
+            return err;
+        };
+        std.debug.print("5\n", .{});
         if (clua.lua_type(@ptrCast(self.lua_state.state), -1) != clua.LUA_TTABLE) {
+            std.debug.print("6\n", .{});
             return error.expectedTable;
         }
+        std.debug.print("7\n", .{});
         const len = clua.lua_rawlen(@ptrCast(self.lua_state.state), -1);
+        std.debug.print("8\n", .{});
         for (0..len) |idx| {
+            std.debug.print("9\n", .{});
             _ = clua.lua_geti(@ptrCast(self.lua_state.state), -1, @intCast(idx + 1));
             const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
             try self.lua_systems.append(self.allocator, system);
         }
-        self.lua_state.popUnchecked();
+        std.debug.print("10\n", .{});
+        try self.lua_state.pop();
+        std.debug.print("11\n", .{});
     }
 
     pub fn addSystems(self: *Self, comptime systems: anytype) !void {
