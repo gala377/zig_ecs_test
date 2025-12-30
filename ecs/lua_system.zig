@@ -5,6 +5,7 @@ const lua = @import("lua_lib");
 const Game = @import("game.zig").Game;
 const DynamicScope = @import("game.zig").JoinedDynamicScope;
 const DynamicQuery = @import("game.zig").DynamicQuery;
+const System = @import("system.zig").System;
 
 const std = @import("std");
 
@@ -165,4 +166,29 @@ pub fn deinit(self: *Self) void {
     if (self.name.len > 0) {
         self.allocator.free(self.name);
     }
+}
+
+pub fn intoSystem(self: Self) !System {
+    const alloc = try self.allocator.create(Self);
+    alloc.* = self;
+    return .{
+        .context = @ptrCast(alloc),
+        .vtable = &.{
+            .run = &systemRun,
+            .deinit = &systemDeinit,
+        },
+    };
+}
+
+fn systemRun(context: ?*anyopaque, game: *Game) void {
+    const self = @as(*Self, @ptrCast(@alignCast(context)));
+    self.run(game) catch |e| {
+        std.debug.panic("panic while executing a lua system. LUA ERROR {any}\n", .{e});
+    };
+}
+
+fn systemDeinit(context: ?*anyopaque) void {
+    const self = @as(*Self, @ptrCast(@alignCast(context)));
+    self.deinit();
+    self.allocator.destroy(self);
 }

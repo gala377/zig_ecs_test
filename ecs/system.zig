@@ -2,19 +2,41 @@ const Game = @import("game.zig").Game;
 const std = @import("std");
 const utils = @import("utils.zig");
 
-pub const System = *const fn (game: *Game) void;
+pub const SystemVTable = struct {
+    run: *const fn (?*anyopaque, *Game) void,
+    deinit: *const fn (?*anyopaque) void,
+};
 
-pub fn chain(comptime systems: anytype) System {
-    return struct {
-        fn call(game: *Game) void {
-            inline for (systems) |sys| {
-                sys(game);
-            }
-        }
-    }.call;
+pub const System = struct {
+    const Self = @This();
+
+    context: ?*anyopaque,
+    vtable: *const SystemVTable,
+
+    pub fn run(self: *const Self, game: *Game) void {
+        self.vtable.run(self.context, game);
+    }
+
+    pub fn deinit(self: *const Self) void {
+        self.vtable.deinit(self.context);
+    }
+};
+
+fn ignore(context: ?*anyopaque) void {
+    _ = context;
 }
 
 pub fn system(comptime F: anytype) System {
+    return .{
+        .context = null,
+        .vtable = &.{
+            .deinit = &ignore,
+            .run = &mkFnSystem(F),
+        },
+    };
+}
+
+fn mkFnSystem(comptime F: anytype) fn (?*anyopaque, *Game) void {
     const info = @typeInfo(@TypeOf(F));
     if (comptime info != .@"fn") {
         @compileError("Expected a function type");
@@ -22,7 +44,8 @@ pub fn system(comptime F: anytype) System {
     const params = info.@"fn".params;
 
     return struct {
-        fn call(game: *Game) void {
+        fn call(context: ?*anyopaque, game: *Game) void {
+            _ = context;
             // Generate compile-time array of query results
             var queries: std.meta.ArgsTuple(@TypeOf(F)) = undefined;
             inline for (params, 0..) |p, index| {

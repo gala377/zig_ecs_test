@@ -8,6 +8,7 @@ const ExportLua = component.ExportLua;
 const ResourceProxy = @import("../mapped.zig").ResourceProxy;
 const Resource = @import("../resource.zig").Resource;
 const Game = @import("../game.zig").Game;
+const System = @import("../system.zig").System;
 
 pub fn EventBuffer(comptime T: type) type {
     return struct {
@@ -96,9 +97,14 @@ pub fn EventWriter(comptime T: type) type {
     };
 }
 
-pub fn eventSystem(comptime T: type) *const fn (*Game) void {
-    return &struct {
-        fn call(game: *Game) void {
+fn ignore(context: ?*anyopaque) void {
+    _ = context;
+}
+
+pub fn eventSystem(comptime T: type) System {
+    const run = struct {
+        fn call(context: ?*anyopaque, game: *Game) void {
+            _ = context;
             const event_buffer = game.getResource(EventBuffer(T));
             const event_writer = game.getResource(EventWriterBuffer(T));
             if (event_writer.inner.events.items.len > 0) {
@@ -114,4 +120,11 @@ pub fn eventSystem(comptime T: type) *const fn (*Game) void {
             // nothing to copy, nothing to free
         }
     }.call;
+    return .{
+        .context = null,
+        .vtable = &.{
+            .deinit = &ignore,
+            .run = &run,
+        },
+    };
 }

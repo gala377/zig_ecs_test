@@ -48,7 +48,7 @@ pub fn installMainLogic(game: *Game) !void {
     game.exportComponent(Foo);
 
     std.debug.print("adding lua systems\n", .{});
-    try game.addLuaSystems("scripts/systems.lua");
+    try game.addLuaSystems(.update, "scripts/systems.lua");
 
     std.debug.print("adding lua callback\n", .{});
     const ref = try game.luaLoad(

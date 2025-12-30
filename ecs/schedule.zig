@@ -44,7 +44,7 @@ pub fn add(self: *Self, phase: Phase, sys: System) !void {
 pub fn runPhase(self: *Self, phase: Phase, game: *Game) void {
     const schedule = self.getSystems(phase);
     for (schedule.items) |sys| {
-        sys(game);
+        sys.run(game);
     }
 }
 
@@ -60,6 +60,24 @@ fn getSystems(self: *Self, phase: Phase) *std.ArrayList(System) {
 }
 
 pub fn deinit(self: *Self) void {
+    for (self.setup_systems.items) |sys| {
+        sys.deinit();
+    }
+    for (self.update_systems.items) |sys| {
+        sys.deinit();
+    }
+    for (self.post_update_systems.items) |sys| {
+        sys.deinit();
+    }
+    for (self.render_systems.items) |sys| {
+        sys.deinit();
+    }
+    for (self.post_render_systems.items) |sys| {
+        sys.deinit();
+    }
+    for (self.tear_down_systems.items) |sys| {
+        sys.deinit();
+    }
     self.setup_systems.deinit(self.allocator);
     self.update_systems.deinit(self.allocator);
     self.post_update_systems.deinit(self.allocator);

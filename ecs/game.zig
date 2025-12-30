@@ -109,7 +109,6 @@ pub const Game = struct {
     inner_id: usize,
     idprovider: *SimpleIdProvider,
 
-    lua_systems: std.ArrayList(LuaSystem),
     schedule: Schedule,
 
     global_entity_storage: entity_storage,
@@ -129,7 +128,6 @@ pub const Game = struct {
             .inner_id = 1,
             .current_scene = null,
             .global_entity_storage = try entity_storage.init(allocator, id_provider.idprovider(), vtable_storage),
-            .lua_systems = .empty,
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
             .frame_allocator = .init(std.heap.c_allocator),
@@ -144,11 +142,6 @@ pub const Game = struct {
     /// Useful for testing systems.
     pub fn runHeadlessOnce(self: *Self) !void {
         self.schedule.runPhase(.update, self);
-        for (self.lua_systems.items) |*sys| {
-            sys.run(self) catch {
-                @panic("could not run lua system");
-            };
-        }
         self.schedule.runPhase(.post_update, self);
         self.schedule.runPhase(.render, self);
         self.schedule.runPhase(.post_render, self);
@@ -170,11 +163,6 @@ pub const Game = struct {
         while (!self.should_close) : (self.should_close = rl.windowShouldClose() or self.should_close) {
             // const start = try std.time.Instant.now();
             self.schedule.runPhase(.update, self);
-            for (self.lua_systems.items) |*sys| {
-                sys.run(self) catch {
-                    @panic("could not run lua system");
-                };
-            }
             self.schedule.runPhase(.post_update, self);
 
             rl.beginDrawing();
@@ -254,7 +242,7 @@ pub const Game = struct {
         try self.addSystems(.tear_down, .{runtime.events.eventSystem(T)});
     }
 
-    pub fn addLuaSystem(self: *Self, path: []const u8) !void {
+    pub fn addLuaSystem(self: *Self, phase: Schedule.Phase, path: []const u8) !void {
         const cwd = std.fs.cwd();
 
         var file = try cwd.openFile(path, .{});
@@ -263,41 +251,29 @@ pub const Game = struct {
         defer self.allocator.free(contents);
         try self.lua_state.loadWithName(contents, path);
         const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
-        try self.lua_systems.append(self.allocator, system);
+        try self.schedule.add(phase, try system.intoSystem());
     }
 
-    pub fn addLuaSystems(self: *Self, path: []const u8) !void {
-        std.debug.print("1\n", .{});
+    pub fn addLuaSystems(self: *Self, phase: Schedule.Phase, path: []const u8) !void {
         const cwd = std.fs.cwd();
-
-        std.debug.print("2\n", .{});
         var file = try cwd.openFile(path, .{});
-        std.debug.print("3\n", .{});
         defer file.close();
         const contents = try file.readToEndAlloc(self.allocator, std.math.maxInt(usize));
-        std.debug.print("4\n", .{});
         defer self.allocator.free(contents);
         self.lua_state.loadWithName(contents, path) catch |err| {
             std.debug.print("got arror when loading lua thing {any}\n", .{err});
             return err;
         };
-        std.debug.print("5\n", .{});
         if (clua.lua_type(@ptrCast(self.lua_state.state), -1) != clua.LUA_TTABLE) {
-            std.debug.print("6\n", .{});
             return error.expectedTable;
         }
-        std.debug.print("7\n", .{});
         const len = clua.lua_rawlen(@ptrCast(self.lua_state.state), -1);
-        std.debug.print("8\n", .{});
         for (0..len) |idx| {
-            std.debug.print("9\n", .{});
             _ = clua.lua_geti(@ptrCast(self.lua_state.state), -1, @intCast(idx + 1));
             const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
-            try self.lua_systems.append(self.allocator, system);
+            try self.schedule.add(phase, try system.intoSystem());
         }
-        std.debug.print("10\n", .{});
         try self.lua_state.pop();
-        std.debug.print("11\n", .{});
     }
 
     pub fn addSystem(self: *Self, phase: Schedule.Phase, comptime sys: anytype) !void {
@@ -397,10 +373,6 @@ pub const Game = struct {
         if (self.current_scene) |*scene| {
             scene.deinit();
         }
-        for (self.lua_systems.items) |*system| {
-            system.deinit();
-        }
-        self.lua_systems.deinit(self.allocator);
         self.global_entity_storage.deinit();
         // INFO: components may hold references to lua so we need to
         // dealloc it last
