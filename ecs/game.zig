@@ -137,6 +137,24 @@ pub const Game = struct {
         };
     }
 
+    /// Run one iteration of systems without
+    /// graphical window and context, also skips setup
+    /// and runtime initialization.
+    ///
+    /// Useful for testing systems.
+    pub fn runHeadlessOnce(self: *Self) !void {
+        self.schedule.runPhase(.update, self);
+        for (self.lua_systems.items) |*sys| {
+            sys.run(self) catch {
+                @panic("could not run lua system");
+            };
+        }
+        self.schedule.runPhase(.post_update, self);
+        self.schedule.runPhase(.render, self);
+        self.schedule.runPhase(.post_render, self);
+        self.schedule.runPhase(.tear_down, self);
+    }
+
     pub fn run(self: *Self) !void {
         try self.installRuntime();
 
@@ -171,7 +189,7 @@ pub const Game = struct {
         }
     }
 
-    fn installRuntime(self: *Self) !void {
+    pub fn installRuntime(self: *Self) !void {
         try self.addResource(commands.init(self, self.allocator));
         try self.addResource(runtime.allocators.GlobalAllocator{ .allocator = self.allocator });
         try self.addResource(runtime.allocators.FrameAllocator{

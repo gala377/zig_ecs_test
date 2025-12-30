@@ -103,6 +103,19 @@ pub fn build(b: *std.Build) void {
     // create a runner for exe unit tests
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
+    // create integration tests
+    const integration_tests_sources = b.addModule("integration", .{
+        .root_source_file = b.path("tests/main.zig"),
+        .target = target,
+    });
+    integration_tests_sources.addImport("ecs", ecs_mod);
+    integration_tests_sources.addImport("lua", lib_mod);
+    const integration_tests_module = b.addTest(.{
+        .name = "integration",
+        .root_module = integration_tests_sources,
+    });
+    const run_integration_tests = b.addRunArtifact(integration_tests_module);
+
     // create the run command in the `zig build`
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
@@ -122,6 +135,9 @@ pub fn build(b: *std.Build) void {
 
     const build_exe_step = b.step("build_exe", "Build the main executable");
     build_exe_step.dependOn(&exe.step);
+
+    const intergtaion_tests_step = b.step("integration", "run integration tests");
+    intergtaion_tests_step.dependOn(&run_integration_tests.step);
 }
 
 fn checkForLuaFiles(b: *std.Build) *Step {
