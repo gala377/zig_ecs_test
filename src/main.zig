@@ -49,7 +49,6 @@ fn runGame(allocator: std.mem.Allocator) !void {
             },
         },
     );
-    try imgui.install(&game, .{ .show_fps = true });
     try imgui.exportLua(&game);
     try logic.install(&game);
 

@@ -386,7 +386,7 @@ pub const Game = struct {
 
 /// Convienience function that adds the most important plugins.
 pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.window.WindowOptions) !void {
-    try raylib.install(game, window_options);
+    try raylib.install(game, window_options, true);
     try game.addResource(LuaRuntime{ .lua = &game.lua_state });
     if (export_lua) {
         // TODO: this one is weird as we add game actions in the runtime

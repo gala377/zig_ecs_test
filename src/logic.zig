@@ -23,9 +23,6 @@ const Without = ecs.game.Without;
 const lua_script = ecs.lua_script;
 
 pub fn install(game: *Game) !void {
-    std.debug.print("adding shapes\n", .{});
-    try ecs.shapes.install(game);
-
     std.debug.print("adding systems\n", .{});
     try game.addSystems(.update, &.{
         system(print_on_button),
@@ -354,7 +351,7 @@ fn call_ref(
     }
 }
 
-const Circle = ecs.shapes.Circle;
+const Circle = ecs.core.shapes.Circle;
 const Color = ecs.core.Color;
 const Style = ecs.core.Style;
 const Position = ecs.core.Position;
