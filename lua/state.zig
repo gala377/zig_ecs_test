@@ -109,13 +109,9 @@ pub const LuaState = struct {
     }
 
     pub fn loadWithName(self: Self, code: []const u8, name: []const u8) !void {
-        std.debug.print("4.1\n", .{});
         var reader = ReaderCtx{ .data = code, .last_read = 0 };
-        std.debug.print("4.2\n", .{});
         const chunkname = try self.context.allocator.dupeZ(u8, name);
-        std.debug.print("4.3\n", .{});
         defer self.context.allocator.free(chunkname);
-        std.debug.print("4.4\n", .{});
         try errorFromInt(lua.lua_load(
             self.state,
             @ptrCast(&sliceReader),
@@ -123,9 +119,7 @@ pub const LuaState = struct {
             @ptrCast(chunkname),
             null,
         ));
-        std.debug.print("4.5\n", .{});
         luaCall(self.state, 0, 1) catch @panic("call error");
-        std.debug.print("4.6\n", .{});
     }
 
     pub fn call(self: Self, nargs: c_int, nresults: c_int, allocator: std.mem.Allocator) !Value {
