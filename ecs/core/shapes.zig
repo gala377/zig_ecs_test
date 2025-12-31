@@ -1,5 +1,4 @@
 const std = @import("std");
-const rl = @import("raylib");
 
 const component_prefix = @import("build_options").components_prefix;
 

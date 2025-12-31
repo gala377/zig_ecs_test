@@ -27,7 +27,3 @@ pub const black: Self = .{
     .b = 0,
     .a = 255,
 };
-
-pub fn toRaylib(self: Self) rl.Color {
-    return .init(self.r, self.g, self.b, self.a);
-}

@@ -393,7 +393,12 @@ fn setup_circle(cond: Resource(RunOnce), commands: Commands) void {
         Circle{ .radius = 50.0 },
         Position{ .x = 1080.0 / 2, .y = 720.0 / 2 },
         Style{
-            .background_color = Color.white,
+            .background_color = Color{
+                .a = 255,
+                .r = 100,
+                .b = 100,
+                .g = 0,
+            },
         },
         PlayerMarker{},
     }) catch @panic("failed to spawn entity");

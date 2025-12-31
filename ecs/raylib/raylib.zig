@@ -14,6 +14,8 @@ const core = ecs.core;
 const shapes = ecs.core.shapes;
 const imgui = ecs.imgui;
 
+const utils = @import("utils.zig");
+
 pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
     try game.addResource(options);
     try game.addSystem(.setup, initWindow);
@@ -83,7 +85,7 @@ pub fn draw_circles(circles: *Query(.{
         rl.drawCircleV(
             .init(position.x, position.y),
             circle.radius,
-            color.toRaylib(),
+            utils.colorToRaylib(color),
         );
     }
 }
@@ -99,7 +101,7 @@ pub fn draw_rectangle(rectangles: *Query(.{
         rl.drawRectangleV(
             .init(position.x, position.y),
             .init(rect.width, rect.height),
-            color.toRaylib(),
+            utils.colorToRaylib(color),
         );
     }
 }

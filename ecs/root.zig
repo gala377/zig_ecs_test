@@ -17,11 +17,9 @@ pub const ExportLua = component.ExportLua;
 
 pub const Game = game.Game;
 pub const Query = game.Query;
-
 pub const Scene = scene.Scene;
 pub const EntityId = entity.EntityId;
-
-pub const system = @import("system.zig").system;
-
 pub const DeclarationGenerator = @import("declaration_generator.zig");
 pub const Resource = @import("resource.zig").Resource;
+
+pub const system = @import("system.zig").system;
