@@ -31,8 +31,16 @@ pub fn main() !void {
 }
 
 fn runGame(allocator: std.mem.Allocator) !void {
-    var game = try Game.init(allocator, .{
-        .window = .{
+    var game = try Game.init(allocator, .{});
+    defer game.deinit();
+
+    const scene = try game.newScene();
+    try game.setInitialScene(scene);
+
+    try ecs.game.addDefaultPlugins(
+        &game,
+        true,
+        .{
             .targetFps = 60,
             .title = "Hello?",
             .size = .{
@@ -40,16 +48,10 @@ fn runGame(allocator: std.mem.Allocator) !void {
                 .height = 720,
             },
         },
-    });
-    defer game.deinit();
-
-    const scene = try game.newScene();
-    try game.setInitialScene(scene);
-
-    try ecs.game.addDefaultPlugins(&game, true);
-    try imgui.addImguiPlugin(&game, .{ .show_fps = true });
+    );
+    try imgui.install(&game, .{ .show_fps = true });
     try imgui.exportLua(&game);
-    try logic.installMainLogic(&game);
+    try logic.install(&game);
 
     try game.run();
 }

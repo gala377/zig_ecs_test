@@ -4,8 +4,6 @@ const ecs = @import("root.zig");
 
 const lua = @import("lua_lib");
 const clua = lua.clib;
-const rg = @import("raygui");
-const rl = @import("raylib");
 
 const component_mod = ecs.component;
 const Component = component_mod.LibComponent;
@@ -36,17 +34,7 @@ const utils = @import("utils.zig");
 const VTableStorage = @import("comp_vtable_storage.zig");
 const Schedule = @import("schedule.zig");
 const core = @import("core/core.zig");
-
-pub const Size = struct {
-    width: i32,
-    height: i32,
-};
-
-pub const WindowOptions = struct {
-    title: [:0]const u8,
-    size: Size,
-    targetFps: i32 = 60,
-};
+const raylib = @import("raylib/raylib.zig");
 
 pub const BuildOptions = struct {
     generate_lua_stub_files: bool = false,
@@ -54,7 +42,6 @@ pub const BuildOptions = struct {
 };
 
 pub const Options = struct {
-    window: WindowOptions,
     build_options: BuildOptions = .{},
 };
 
@@ -151,39 +138,32 @@ pub const Game = struct {
     pub fn run(self: *Self) !void {
         try self.installRuntime();
 
-        rl.setConfigFlags(.{ .window_highdpi = true });
-        rl.setTargetFPS(self.options.window.targetFps);
-        rl.initWindow(self.options.window.size.width, self.options.window.size.height, self.options.window.title);
-        defer rl.closeWindow();
-
         self.schedule.runPhase(.setup, self);
 
-        // var iters: usize = 1;
-        // var total: usize = 0;
-        while (!self.should_close) : (self.should_close = rl.windowShouldClose() or self.should_close) {
+        while (!self.should_close) {
             // const start = try std.time.Instant.now();
             self.schedule.runPhase(.update, self);
             self.schedule.runPhase(.post_update, self);
 
-            rl.beginDrawing();
-
+            self.schedule.runPhase(.pre_render, self);
             self.schedule.runPhase(.render, self);
             self.schedule.runPhase(.post_render, self);
-
-            rl.clearBackground(.black);
-            rl.endDrawing();
 
             self.schedule.runPhase(.tear_down, self);
         }
     }
 
+    /// TODO: Runtime and core split doesn't make much sense honestly.
+    /// I think with things like Commands it makes sense but not much more honestly.
     pub fn installRuntime(self: *Self) !void {
+        try self.addResource(GameActions{ .should_close = false, .allocator = self.allocator, .log = &.{} });
         try self.addResource(commands.init(self, self.allocator));
         try self.addResource(runtime.allocators.GlobalAllocator{ .allocator = self.allocator });
         try self.addResource(runtime.allocators.FrameAllocator{
             .allocator = self.frame_allocator.allocator(),
             .arena = &self.frame_allocator,
         });
+        try self.addSystem(.post_update, applyGameActions);
         try self.addSystem(.post_update, commands_system.create_entities);
         try self.addSystem(.tear_down, runtime.allocators.freeFrameAllocator);
     }
@@ -239,9 +219,12 @@ pub const Game = struct {
             runtime.events.EventBuffer(T){ .allocator = self.allocator, .events = &.{} },
             runtime.events.EventWriterBuffer(T){ .allocator = self.allocator, .events = .empty },
         });
-        try self.addSystems(.tear_down, .{runtime.events.eventSystem(T)});
+        try self.addSystems(.tear_down, &.{runtime.events.eventSystem(T)});
     }
 
+    /// Add a system defined in lua.
+    ///
+    /// The lua file should return a system built with system builder
     pub fn addLuaSystem(self: *Self, phase: Schedule.Phase, path: []const u8) !void {
         const cwd = std.fs.cwd();
 
@@ -254,6 +237,9 @@ pub const Game = struct {
         try self.schedule.add(phase, try system.intoSystem());
     }
 
+    /// Add multiple systems from lua.
+    ///
+    /// The lua file should return an array of systems built wiht system builder.
     pub fn addLuaSystems(self: *Self, phase: Schedule.Phase, path: []const u8) !void {
         const cwd = std.fs.cwd();
         var file = try cwd.openFile(path, .{});
@@ -276,12 +262,17 @@ pub const Game = struct {
         try self.lua_state.pop();
     }
 
+    /// Add a zig functionas a system to a specific phase.
     pub fn addSystem(self: *Self, phase: Schedule.Phase, comptime sys: anytype) !void {
         try self.schedule.add(phase, ecs.system(sys));
     }
 
-    pub fn addSystems(self: *Self, phase: Schedule.Phase, comptime systems: anytype) !void {
-        inline for (systems) |s| {
+    /// Add multiple systems to specific phase.
+    ///
+    /// Those systems have to be already wrapped into a System interface
+    /// TODO: We need to think about what interface we want to expose as addSystem and addSystems have different api
+    pub fn addSystems(self: *Self, phase: Schedule.Phase, systems: []const System) !void {
+        for (systems) |s| {
             try self.schedule.add(phase, s);
         }
     }
@@ -393,11 +384,13 @@ pub const Game = struct {
     }
 };
 
-pub fn addDefaultPlugins(game: *Game, export_lua: bool) !void {
-    _ = try game.addResource(GameActions{ .should_close = false, .allocator = game.allocator, .log = &.{} });
-    _ = try game.addResource(LuaRuntime{ .lua = &game.lua_state });
-    try game.addSystem(.update, applyGameActions);
+/// Convienience function that adds the most important plugins.
+pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.window.WindowOptions) !void {
+    try raylib.install(game, window_options);
+    try game.addResource(LuaRuntime{ .lua = &game.lua_state });
     if (export_lua) {
+        // TODO: this one is weird as we add game actions in the runtime
+        // but we expose them to lua here
         game.exportComponent(GameActions);
         game.exportComponent(EntityId);
         game.exportComponent(core.Vec2);

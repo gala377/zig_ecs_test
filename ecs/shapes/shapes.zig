@@ -11,6 +11,7 @@ const Style = core.Style;
 const Query = @import("../game.zig").Query;
 const Game = @import("../game.zig").Game;
 const system = @import("../system.zig").system;
+const System = @import("../system.zig").System;
 
 pub const Circle = struct {
     pub const component_info = Component(component_prefix, Circle);
@@ -55,10 +56,10 @@ pub fn draw_rectangle(rectangles: *Query(.{
     }
 }
 
-pub fn installShapes(
+pub fn install(
     game: *Game,
 ) !void {
-    try game.addSystems(.render, .{
+    try game.addSystems(.render, &.{
         system(draw_circles),
         system(draw_rectangle),
     });

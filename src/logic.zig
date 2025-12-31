@@ -22,9 +22,12 @@ const EntityId = ecs.EntityId;
 const Without = ecs.game.Without;
 const lua_script = ecs.lua_script;
 
-pub fn installMainLogic(game: *Game) !void {
+pub fn install(game: *Game) !void {
+    std.debug.print("adding shapes\n", .{});
+    try ecs.shapes.install(game);
+
     std.debug.print("adding systems\n", .{});
-    try game.addSystems(.update, .{
+    try game.addSystems(.update, &.{
         system(print_on_button),
         system(call_ref),
         system(spawn_on_click),
@@ -150,14 +153,11 @@ pub fn installMainLogic(game: *Game) !void {
         foo,
     });
 
-    std.debug.print("adding shapes\n", .{});
-    try ecs.shapes.installShapes(game);
-
     std.debug.print("adding event\n", .{});
     try game.addEvent(MyEvent);
 
     std.debug.print("adding lua script\n", .{});
-    const object = game.luaLoad(
+    const object = try game.luaLoad(
         \\ local f = {}
         \\ function f:Init()
         \\   self.msg = "hello"
@@ -175,18 +175,14 @@ pub fn installMainLogic(game: *Game) !void {
         \\  end
         \\ end
         \\ return f
-    ) catch @panic("could not load");
+    );
     const script = lua_script.LuaScript.fromLua(game.allocator, game.lua_state, object) catch @panic("could not create object");
-    _ = game.newGlobalEntity(.{
+    _ = try game.newGlobalEntity(.{
         script,
-    }) catch @panic("could not create entoty");
+    });
 
     std.debug.print("adding more systems\n", .{});
-    game.addSystems(.update, .{
-        system(lua_script.runInitScripts),
-        system(lua_script.runUpdateScripts),
-    }) catch @panic("could not add system");
-
+    try lua_script.install(game);
     std.debug.print("done... running\n", .{});
 }
 

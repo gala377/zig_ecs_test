@@ -12,7 +12,7 @@ pub const Options = struct {
     show_fps: bool = false,
 };
 
-pub fn addImguiPlugin(game: *Game, options: Options) !void {
+pub fn install(game: *Game, options: Options) !void {
     try game.addSystem(.render, systems.draw_imgui);
     if (options.show_fps) {
         try game.addSystem(.render, showFps);

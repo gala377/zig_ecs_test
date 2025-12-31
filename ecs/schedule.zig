@@ -10,16 +10,21 @@ pub const Phase = enum {
     setup,
     update,
     post_update,
+    pre_render,
     render,
     post_render,
     tear_down,
 };
 
 setup_systems: std.ArrayList(System),
+
 update_systems: std.ArrayList(System),
 post_update_systems: std.ArrayList(System),
+
+pre_render_systems: std.ArrayList(System),
 render_systems: std.ArrayList(System),
 post_render_systems: std.ArrayList(System),
+
 tear_down_systems: std.ArrayList(System),
 
 allocator: std.mem.Allocator,
@@ -29,6 +34,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
         .setup_systems = .empty,
         .update_systems = .empty,
         .post_update_systems = .empty,
+        .pre_render_systems = .empty,
         .render_systems = .empty,
         .post_render_systems = .empty,
         .tear_down_systems = .empty,
@@ -47,12 +53,20 @@ pub fn runPhase(self: *Self, phase: Phase, game: *Game) void {
         sys.run(game);
     }
 }
+pub fn deinitPhase(self: *Self, phase: Phase) void {
+    const systems = self.getSystems(phase);
+    for (systems.items) |sys| {
+        sys.deinit();
+    }
+    systems.deinit(self.allocator);
+}
 
 fn getSystems(self: *Self, phase: Phase) *std.ArrayList(System) {
     return switch (phase) {
         .setup => &self.setup_systems,
         .update => &self.update_systems,
         .post_update => &self.post_update_systems,
+        .pre_render => &self.pre_render_systems,
         .render => &self.render_systems,
         .post_render => &self.post_render_systems,
         .tear_down => &self.tear_down_systems,
@@ -60,28 +74,7 @@ fn getSystems(self: *Self, phase: Phase) *std.ArrayList(System) {
 }
 
 pub fn deinit(self: *Self) void {
-    for (self.setup_systems.items) |sys| {
-        sys.deinit();
+    inline for (@typeInfo(Phase).@"enum".fields) |f| {
+        self.deinitPhase(@enumFromInt(f.value));
     }
-    for (self.update_systems.items) |sys| {
-        sys.deinit();
-    }
-    for (self.post_update_systems.items) |sys| {
-        sys.deinit();
-    }
-    for (self.render_systems.items) |sys| {
-        sys.deinit();
-    }
-    for (self.post_render_systems.items) |sys| {
-        sys.deinit();
-    }
-    for (self.tear_down_systems.items) |sys| {
-        sys.deinit();
-    }
-    self.setup_systems.deinit(self.allocator);
-    self.update_systems.deinit(self.allocator);
-    self.post_update_systems.deinit(self.allocator);
-    self.render_systems.deinit(self.allocator);
-    self.post_render_systems.deinit(self.allocator);
-    self.tear_down_systems.deinit(self.allocator);
 }

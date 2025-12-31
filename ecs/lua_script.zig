@@ -12,6 +12,8 @@ const LuaRuntime = ecs.runtime.lua_runtime;
 const Commands = ecs.Commands;
 const EntityId = ecs.EntityId;
 const FrameAllocator = ecs.runtime.allocators.FrameAllocator;
+const Game = ecs.Game;
+const system = ecs.system;
 
 pub const Initialized = struct {
     pub const component_info = Component(Initialized);
@@ -188,4 +190,11 @@ pub fn runUpdateScripts(
             }
         }
     }
+}
+
+pub fn install(game: *Game) !void {
+    try game.addSystems(.update, &.{
+        system(runInitScripts),
+        system(runUpdateScripts),
+    });
 }
