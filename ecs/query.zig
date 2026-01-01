@@ -3,6 +3,7 @@ const Entity = @import("entity.zig");
 const utils = @import("utils.zig");
 const PtrTuple = utils.PtrTuple;
 const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
+const Archetype = @import("entity_storage.zig").Archetype;
 
 pub fn QueryIter(comptime Components: anytype) type {
     const Storage = @import("entity_storage.zig");
@@ -12,10 +13,12 @@ pub fn QueryIter(comptime Components: anytype) type {
         component_ids: [Len]ComponentId,
         storage: *Storage,
         next_archetype: usize = 0,
-        current_entity_iterator_pos: usize = 0,
-        current_entity_iterator: []Entity = &.{},
         cache: []const usize,
         idprovider: utils.IdProvider,
+
+        archetype_entity_index: usize = 0,
+        archetype_entities: usize = 0,
+        archetype: ?*Archetype = null,
 
         pub fn init(storage: *Storage, component_ids: [Len]ComponentId, cache: []const usize, idprovider: utils.IdProvider) Iter {
             return .{
@@ -27,41 +30,44 @@ pub fn QueryIter(comptime Components: anytype) type {
         }
 
         pub fn next(self: *Iter) ?PtrTuple(Components) {
-            if (self.current_entity_iterator_pos < self.current_entity_iterator.len) {
-                const entity: *Entity = &self.current_entity_iterator[self.current_entity_iterator_pos];
-                self.current_entity_iterator_pos += 1;
-                return self.getComponentsFromEntity(entity);
-            }
-            return self.lookupCached(self.cache);
+            const archetype = self.archetype orelse {
+                // archetype has not been initialized yet
+                return self.progressToNextArchetype(self.cache);
+            };
+            self.archetype_entity_index = archetype.nextIndex(self.archetype_entity_index) orelse {
+                // archetype is emtptu
+                return self.progressToNextArchetype(self.cache);
+            };
+            return self.getComponentsFromCurrentArchetype();
         }
 
-        fn lookupCached(self: *Iter, cache: []const usize) ?PtrTuple(Components) {
+        pub fn progressToNextArchetype(self: *Iter, cache: []const usize) ?PtrTuple(Components) {
             while (self.next_archetype < cache.len) {
                 const archetype_index = cache[self.next_archetype];
-                self.current_entity_iterator = self
+                self.archetype = &self
                     .storage
-                    .archetypes
-                    .items[archetype_index]
-                    .entities
-                    .values();
-                self.current_entity_iterator_pos = 0;
+                    .archetypes_v2
+                    .items[archetype_index];
                 self.next_archetype += 1;
-                if (self.current_entity_iterator_pos < self.current_entity_iterator.len) {
-                    const entity: *Entity = &self.current_entity_iterator[self.current_entity_iterator_pos];
-                    self.current_entity_iterator_pos += 1;
-                    return self.getComponentsFromEntity(entity);
-                }
+                self.archetype_entity_index = self.archetype.?.iterIndex() orelse {
+                    // archetype is empty
+                    continue;
+                };
+                return self.getComponentsFromCurrentArchetype();
             }
             return null;
         }
 
-        fn getComponentsFromEntity(self: *Iter, entity: *Entity) PtrTuple(Components) {
+        pub fn getComponentsFromCurrentArchetype(self: *Iter) PtrTuple(Components) {
             var res: PtrTuple(Components) = undefined;
             inline for (Components, 0..) |Component, idx| {
                 const id = utils.dynamicTypeId(Component, self.idprovider);
-                const comp: *ComponentWrapper = entity.components.getPtr(id).?;
-                const asptr: *Component = @ptrCast(@alignCast(comp.pointer));
-                res[idx] = asptr;
+                const comp_column = self.archetype.?.components_map.get(id) orelse unreachable;
+                const comp_ptr = self.archetype.?.components.items[comp_column].getAs(
+                    self.archetype_entity_index,
+                    Component,
+                );
+                res[idx] = comp_ptr;
             }
             return res;
         }

@@ -156,13 +156,13 @@ pub const Game = struct {
     /// TODO: Runtime and core split doesn't make much sense honestly.
     /// I think with things like Commands it makes sense but not much more honestly.
     pub fn installRuntime(self: *Self) !void {
-        try self.addResource(GameActions{ .should_close = false, .allocator = self.allocator, .log = &.{} });
-        try self.addResource(commands.init(self, self.allocator));
         try self.addResource(runtime.allocators.GlobalAllocator{ .allocator = self.allocator });
         try self.addResource(runtime.allocators.FrameAllocator{
             .allocator = self.frame_allocator.allocator(),
             .arena = &self.frame_allocator,
         });
+        try self.addResource(GameActions{ .should_close = false, .allocator = self.allocator, .log = &.{} });
+        try self.addResource(commands.init(self));
         try self.addSystem(.post_update, applyGameActions);
         try self.addSystem(.post_update, commands_system.create_entities);
         try self.addSystem(.tear_down, runtime.allocators.freeFrameAllocator);
@@ -282,13 +282,10 @@ pub const Game = struct {
         const entity_id = EntityId{
             .scene_id = 0,
             .entity_id = id,
-            .archetype_id = try self.allocator.create(usize),
         };
-        if (entity_id.archetype_id) |aid| {
-            aid.* = 0;
-        }
         const with_id = .{entity_id} ++ components;
-        return self.global_entity_storage.makeEntity(id, with_id);
+        try self.global_entity_storage.add(entity_id, with_id);
+        return entity_id;
     }
 
     pub fn removeEntities(self: *Self, ids: []EntityId) !void {
@@ -310,10 +307,10 @@ pub const Game = struct {
             return error.sceneDoesNotExists;
         }
         if (global_entities.items.len > 0) {
-            self.global_entity_storage.removeEntities(global_entities.items);
+            try self.global_entity_storage.remove(global_entities.items);
         }
         if (scene_entities.items.len > 0) {
-            self.current_scene.?.entity_storage.removeEntities(scene_entities.items);
+            try self.current_scene.?.entity_storage.remove(scene_entities.items);
         }
     }
 
@@ -321,13 +318,12 @@ pub const Game = struct {
     //
     // Does not take ownership over a slice of components.
     pub fn addComponents(self: *Self, id: EntityId, components: []ComponentWrapper) !void {
-        const archetype_id = id.archetype_id orelse @panic("archetype id is null");
         if (id.scene_id == 0) {
-            try self.global_entity_storage.addComponents(id.entity_id, archetype_id.*, components);
+            try self.global_entity_storage.addComponents(id, components);
             return;
         } else if (self.current_scene) |*scene| {
             if (scene.id == id.scene_id) {
-                try scene.entity_storage.addComponents(id.entity_id, archetype_id.*, components);
+                try scene.entity_storage.addComponents(id, components);
                 return;
             }
         }
@@ -336,13 +332,13 @@ pub const Game = struct {
         return error.sceneDoesNotExist;
     }
 
-    pub fn insertEntity(self: *Self, id: EntityId, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
+    pub fn newEntityWrapped(self: *Self, id: EntityId, components: []const ComponentWrapper) !void {
         if (id.scene_id == 0) {
-            try self.global_entity_storage.insertEntity(id.entity_id, components);
+            try self.global_entity_storage.addWrapped(id, components);
             return;
         } else if (self.current_scene) |*scene| {
             if (scene.id == id.scene_id) {
-                try scene.entity_storage.insertEntity(id.entity_id, components);
+                try scene.entity_storage.addWrapped(id, components);
                 return;
             }
         }

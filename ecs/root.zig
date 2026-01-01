@@ -23,3 +23,9 @@ pub const DeclarationGenerator = @import("declaration_generator.zig");
 pub const Resource = @import("resource.zig").Resource;
 
 pub const system = @import("system.zig").system;
+
+pub const Marker = struct {
+    marker: usize = 0,
+
+    pub const empty: Marker = .{};
+};

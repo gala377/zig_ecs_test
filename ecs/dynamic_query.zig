@@ -8,6 +8,7 @@ const Entity = @import("entity.zig");
 const LuaPush = @import("entity_storage.zig").ComponentLuaPush;
 const Storage = @import("entity_storage.zig");
 const utils = @import("utils.zig");
+const ArchetypeV2 = @import("entity_storage.zig").Archetype;
 
 // Because dunamic query cannot decide the amount of components at comptime
 // the returned components are returned as a slice allocated by the iterator.
@@ -82,49 +83,55 @@ pub const DynamicQueryIter = struct {
     sorted_component_ids: []const ComponentId,
     storage: *Storage,
     next_archetype: usize = 0,
-    current_entity_iterator_pos: usize = 0,
-    current_entity_iterator: []Entity = &.{},
     allocator: std.mem.Allocator,
     cache: []const usize,
 
+    archetype_entity_index: usize = 0,
+    archetype_entities: usize = 0,
+    archetype: ?*ArchetypeV2 = null,
+
     pub fn next(self: *Self) ?[]LuaAccessibleOpaqueComponent {
-        if (self.current_entity_iterator_pos < self.current_entity_iterator.len) {
-            const entity: *Entity = &self.current_entity_iterator[self.current_entity_iterator_pos];
-            self.current_entity_iterator_pos += 1;
-            return self.getComponentsFromEntity(entity);
-        }
-        return self.lookupCached(self.cache);
+        const archetype = self.archetype orelse {
+            // archetype has not been initialized yet
+            return self.progressToNextArchetype(self.cache);
+        };
+        self.archetype_entity_index = archetype.nextIndex(self.archetype_entity_index) orelse {
+            // archetype is emtptu
+            return self.progressToNextArchetype(self.cache);
+        };
+        return self.getComponentsFromCurrentArchetype();
     }
 
-    fn lookupCached(self: *Self, cache: []const usize) ?[]LuaAccessibleOpaqueComponent {
+    pub fn progressToNextArchetype(self: *Self, cache: []const usize) ?[]LuaAccessibleOpaqueComponent {
         while (self.next_archetype < cache.len) {
             const archetype_index = cache[self.next_archetype];
-            self.current_entity_iterator = self
+            self.archetype = &self
                 .storage
-                .archetypes
-                .items[archetype_index]
-                .entities
-                .values();
-            self.current_entity_iterator_pos = 0;
+                .archetypes_v2
+                .items[archetype_index];
             self.next_archetype += 1;
-            if (self.current_entity_iterator_pos < self.current_entity_iterator.len) {
-                const entity: *Entity = &self.current_entity_iterator[self.current_entity_iterator_pos];
-                self.current_entity_iterator_pos += 1;
-                return self.getComponentsFromEntity(entity);
-            }
+            self.archetype_entity_index = self.archetype.?.iterIndex() orelse {
+                // archetype is empty
+                continue;
+            };
+            return self.getComponentsFromCurrentArchetype();
         }
         return null;
     }
 
-    fn getComponentsFromEntity(self: *Self, entity: *Entity) []LuaAccessibleOpaqueComponent {
+    fn getComponentsFromCurrentArchetype(self: *Self) []LuaAccessibleOpaqueComponent {
         var res = self.allocator.alloc(LuaAccessibleOpaqueComponent, self.component_ids.len) catch {
             @panic("oom");
         };
         for (self.component_ids, 0..) |id, idx| {
-            const comp = entity.components.getPtr(id).?;
+            const comp_column_index = self.archetype.?.components_map.get(id) orelse unreachable;
+            const comp_column = &self.archetype.?.components.items[comp_column_index];
+            const comp_ptr = comp_column.getOpaque(
+                self.archetype_entity_index,
+            );
             const wrapped = LuaAccessibleOpaqueComponent{
-                .pointer = comp.pointer,
-                .push = comp.vtable.luaPush.?,
+                .pointer = comp_ptr,
+                .push = comp_column.vtable.luaPush.?,
             };
             res[idx] = wrapped;
         }

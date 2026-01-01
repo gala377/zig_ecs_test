@@ -21,6 +21,243 @@ pub const ComponentFree = *const fn (*anyopaque, allocator: std.mem.Allocator) v
 pub const ComponentLuaPush = *const fn (*anyopaque, state: *clua.lua_State) void;
 pub const ComponentFromLua = *const fn (state: *clua.lua_State, storage: *Self) void;
 
+// Maps entities to their respective archetypes so we can
+pub const EntityMap = std.AutoHashMap(EntityId, EntityArchetypeRecord);
+
+const EntityArchetypeRecord = struct {
+    // archetype that this entity belogs to
+    archetype_index: usize,
+    // row in this archetype that this entity stores it's components at
+    row_id: usize,
+};
+
+pub const Archetype = struct {
+    /// how many entities are in this archetype
+    capacity: usize,
+    /// a list of free indexes that things can be allocated at
+    freelist: std.AutoHashMap(usize, u8),
+    /// stores all the components in the archetype
+    components: std.ArrayList(ComponentColumn),
+    /// maps component id to the index in the components array
+    components_map: std.AutoHashMap(ComponentId, usize),
+
+    /// Sorted list of component ids stored within this archetype.
+    ///
+    /// can be derived from component_map.each.component_id
+    /// or from component_map
+    components_ids: []const ComponentId,
+
+    archetype_index: usize,
+
+    pub fn init(allocator: std.mem.Allocator, archetype_index: usize, components_ids: []const ComponentId, vtables: []*const ComponentWrapper.VTable) !@This() {
+        var components_map = std.AutoHashMap(ComponentId, usize).init(allocator);
+        var components = try std.ArrayList(ComponentColumn).initCapacity(allocator, components_ids.len);
+        for (vtables, 0..vtables.len) |vtable, index| {
+            try components_map.put(vtable.component_id, index);
+            try components.append(allocator, .init(vtable));
+        }
+        return .{
+            .capacity = 0,
+            .freelist = .init(allocator),
+            .components = components,
+            .components_map = components_map,
+            .components_ids = components_ids,
+            .archetype_index = archetype_index,
+        };
+    }
+
+    // Returns a handle that can be used to get entities
+    // from this archetype. To get next index call
+    // nextIndex passing this index as argument.
+    pub fn iterIndex(self: *@This()) ?usize {
+        if (self.alive() == 0) {
+            return null;
+        }
+        var index: usize = 0;
+        // progress index to first one not in freelist
+        while (self.freelist.contains(index)) : (index = index + 1) {}
+        if (index >= self.capacity) {
+            return null;
+        }
+        return index;
+    }
+    // Gives you the next index which can be used to get a component.
+    //
+    // Null if there is no more entities to look at
+    pub fn nextIndex(self: *@This(), index: usize) ?usize {
+        var new_index = index + 1;
+        while (self.freelist.contains(new_index)) : (new_index = new_index + 1) {}
+        if (new_index >= self.capacity) {
+            return null;
+        }
+        return new_index;
+    }
+
+    // how many entities are in this storage.
+    pub fn alive(self: *@This()) usize {
+        return self.capacity - self.freelist.count();
+    }
+
+    pub fn finalize(self: *@This(), index: usize, allocator: std.mem.Allocator) void {
+        for (self.components.items) |*column| {
+            const comp = column.getOpaque(index);
+            const vtable = column.vtable;
+            vtable.deinit(comp, allocator);
+        }
+    }
+
+    pub fn finalizeById(self: *@This(), index: usize, allocator: std.mem.Allocator, ids: []const ComponentId) void {
+        for (ids) |component_id| {
+            const component_index = self.components_map.get(component_id) orelse @panic("component is missing");
+            const column = &self.components[component_index];
+            const comp = column.getOpaque(index);
+            const vtable = column.vtable;
+            vtable.deinit(comp, allocator);
+        }
+    }
+
+    pub fn remove(self: *@This(), index: usize) !void {
+        std.debug.print("Self is {any}\n", .{self.*});
+        std.debug.print("Removign under index {any}\n", .{index});
+        try self.freelist.put(index, 0);
+    }
+
+    // Does not free memory that has been allocated for ComponentWrapper.
+    // This has to be one by the caller.
+    pub fn add(self: *@This(), allocator: std.mem.Allocator, components: []const ComponentWrapper) !usize {
+        const index = try self.allocate(allocator);
+        for (components) |component| {
+            const component_id = component.vtable.component_id;
+            const column_index = self.components_map.get(component_id) orelse unreachable;
+            const pointer_many: [*]const u8 = @ptrCast(@alignCast(component.pointer));
+            const pointer: []const u8 = pointer_many[0..component.vtable.size];
+            self.components.items[column_index].insertAtUnchecked(index, component_id, pointer);
+        }
+        return index;
+    }
+
+    // Inserts component at the given space, does not free the memory allocated to the component
+    pub fn insertUncheked(self: @This(), index: usize, components: []const ComponentWrapper) void {
+        for (components) |component| {
+            const component_id = component.vtable.component_id;
+            const column_index = self.components_map.get(component_id) orelse unreachable;
+            const pointer_many: [*]const u8 = @ptrCast(@alignCast(component.pointer));
+            const pointer: []const u8 = pointer_many[0..component.vtable.size];
+            self.components.items[column_index].insertAtUnchecked(index, component_id, pointer);
+        }
+    }
+
+    // allocates zeroed space for the given components.
+    //
+    // Returns index at which entity resides in the archetype.
+    pub fn allocate(self: *@This(), allocator: std.mem.Allocator) !usize {
+        return self.getFreelistIndex() orelse try self.allocateNewSpace(allocator);
+    }
+
+    /// Gets random index from freelist if any.
+    ///
+    /// Removes index if it has been found.
+    fn getFreelistIndex(self: *@This()) ?usize {
+        var key_iterator = self.freelist.keyIterator();
+        const next_ptr = key_iterator.next() orelse return null;
+        const next = next_ptr.*;
+        _ = self.freelist.remove(next);
+        return next;
+    }
+
+    /// **does not insert a value into free list**
+    ///
+    /// This has to be done manually
+    fn allocateNewSpace(self: *@This(), allocator: std.mem.Allocator) !usize {
+        for (self.components.items) |*column| {
+            const index = try column.allocateNew(allocator);
+            std.debug.assert(index == self.capacity);
+        }
+        const index = self.capacity;
+        self.capacity += 1;
+        return index;
+    }
+
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.components_ids);
+        for (self.components.items) |*column| {
+            column.deinit(allocator, &self.freelist);
+        }
+        self.components.deinit(allocator);
+        self.freelist.deinit();
+        self.components_map.deinit();
+    }
+};
+
+pub const ComponentColumn = struct {
+    component_size: usize,
+    column_size: usize, // can be derived from buffer.items.size / component_size
+    component_id: ComponentId,
+    vtable: *const ComponentWrapper.VTable,
+    // Align to 64 so that everything can be stored without problems
+    buffer: std.array_list.Aligned(u8, std.mem.Alignment.@"8"),
+
+    pub fn init(vtable: *const ComponentWrapper.VTable) @This() {
+        return .{
+            .component_id = vtable.component_id,
+            .column_size = 0,
+            .component_size = vtable.size,
+            .vtable = vtable,
+            .buffer = .empty,
+        };
+    }
+
+    pub fn insertAtUnchecked(self: *@This(), index: usize, component_id: ComponentId, bytes: []const u8) void {
+        std.debug.assert(self.vtable.component_id == component_id);
+        const buffer_index = index * self.component_size;
+        @memcpy(self.buffer.items[buffer_index .. buffer_index + self.component_size], bytes);
+    }
+
+    /// allocates zeroed memory in the buffer.
+    ///
+    /// returns index that can be used to get/insert at the memory.
+    pub fn allocateNew(self: *@This(), allocator: std.mem.Allocator) !usize {
+        try self.buffer.appendNTimes(allocator, 0, self.component_size);
+        return (self.buffer.items.len / self.component_size) - 1;
+    }
+
+    pub fn addBytes(self: *@This(), allocator: std.mem.Allocator, component_id: ComponentId, bytes: []const u8) !void {
+        std.debug.assert(self.vtable.component_id == component_id);
+        try self.buffer.appendSlice(allocator, bytes);
+    }
+
+    pub fn getOpaque(self: *@This(), index: usize) *anyopaque {
+        std.debug.assert(index < (self.buffer.items.len / self.component_size));
+        const buffer_index = index * self.component_size;
+        const buffer_pointer = self.buffer.items[buffer_index .. buffer_index + self.component_size];
+        return @ptrCast(buffer_pointer);
+    }
+
+    pub fn getAs(self: *@This(), index: usize, comptime T: type) *T {
+        std.debug.assert(index < (self.buffer.items.len / self.component_size));
+        const buffer_index = index * self.component_size;
+        const buffer_pointer: []align(@alignOf(T)) u8 = @alignCast(self.buffer.items[buffer_index .. buffer_index + self.component_size]);
+        const as_component: *T = std.mem.bytesAsValue(T, buffer_pointer);
+        return as_component;
+    }
+
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator, freelist: *std.AutoHashMap(usize, u8)) void {
+        const column_size = self.buffer.items.len / self.component_size;
+        var index: usize = 0;
+        while (index < column_size) : (index += 1) {
+            if (freelist.contains(index)) {
+                continue;
+            }
+            const buffer_index = self.component_size * index;
+            const buffer_pointer = self.buffer.items[buffer_index .. buffer_index + self.component_size];
+            const as_pointer: *anyopaque = @ptrCast(@alignCast(buffer_pointer));
+            const component_deinit = self.vtable.deinit;
+            component_deinit(as_pointer, allocator);
+        }
+        self.buffer.deinit(allocator);
+    }
+};
+
 pub const ComponentWrapper = struct {
     pub const VTable = struct {
         size: usize,
@@ -29,14 +266,13 @@ pub const ComponentWrapper = struct {
         name: []const u8,
         component_id: ComponentId,
         deinit: ComponentDeinit,
-        free: ComponentFree,
         luaPush: ?ComponentLuaPush,
         fromLua: ?ComponentFromLua,
     };
 
     pointer: *anyopaque,
     // should be static
-    vtable: *VTable,
+    vtable: *const VTable,
 };
 
 pub const ArchetypeStorage = struct {
@@ -46,7 +282,10 @@ pub const ArchetypeStorage = struct {
     archetype_index: usize,
 };
 
-archetypes: std.ArrayList(ArchetypeStorage),
+archetypes_v2: std.ArrayList(Archetype),
+entity_map: EntityMap,
+
+// archetypes: std.ArrayList(ArchetypeStorage),
 components_per_archetype: std.ArrayList(Sorted([]const ComponentId)),
 queries_hash: std.AutoHashMap(u64, std.ArrayList(CacheEntry)),
 allocator: std.mem.Allocator,
@@ -61,172 +300,182 @@ const CacheEntry = struct {
 
 pub fn init(allocator: std.mem.Allocator, idprovider: utils.IdProvider, vtable_storage: *VTableStorage) !Self {
     return .{
-        .archetypes = .empty,
+        //.archetypes = .empty,
         .components_per_archetype = .empty,
         .allocator = allocator,
         .queries_hash = .init(allocator),
         .idprovider = idprovider,
         .vtable_storage = vtable_storage,
+        .entity_map = .init(allocator),
+        .archetypes_v2 = .empty,
     };
 }
 
-pub fn makeEntity(self: *Self, id: usize, components: anytype) !EntityId {
+// Adds entity with the given id to the storage.
+//
+// Copies all the components to the allocated space for them.
+pub fn add(self: *Self, id: EntityId, components: anytype) !void {
     const tinfo = @typeInfo(@TypeOf(components));
     if (comptime tinfo != .@"struct" and !tinfo.@"struct".is_tuple) {
         @compileError("components of an entity have to be passed as a tuple");
     }
-    const infoStruct = tinfo.@"struct";
-    var componentsStorage: [infoStruct.fields.len]ComponentWrapper = undefined;
-    var componentIds: [infoStruct.fields.len]ComponentId = undefined;
+    const components_len = tinfo.@"struct".fields.len;
+    var vtables: [components_len]*const ComponentWrapper.VTable = undefined;
+    var component_ids: [components_len]ComponentId = undefined;
+    var wrappers: [components_len]ComponentWrapper = undefined;
     inline for (components, 0..) |component, index| {
-        componentsStorage[index] = try self.allocComponent(component);
-        componentIds[index] = componentsStorage[index].vtable.component_id;
+        const vtable = try self.createVTable(@TypeOf(component));
+        vtables[index] = vtable;
+        component_ids[index] = vtable.component_id;
+        const boxed = try self.allocator.create(@TypeOf(component));
+        boxed.* = component;
+        wrappers[index] = ComponentWrapper{
+            .pointer = @ptrCast(boxed),
+            .vtable = vtable,
+        };
     }
-    var entity = Entity.init(id, self.allocator);
-    try entity.addComponents(&componentsStorage);
-    const entity_id_comp: *EntityId = entity.getComponent(EntityId) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
-    const storage = try self.findOrCreateArchetype(&componentIds);
-    if (entity_id_comp.archetype_id) |aid| {
-        aid.* = storage.archetype_index;
-    } else {
-        @panic("archetype index is null");
+    const storage = try self.findOrCreateArchetype(&component_ids, &vtables);
+    const row_id = try storage.add(self.allocator, &wrappers);
+    try self.entity_map.put(id, .{
+        .archetype_index = storage.archetype_index,
+        .row_id = row_id,
+    });
+    inline for (components, 0..) |component, index| {
+        self.allocator.destroy(
+            @as(
+                *@TypeOf(component),
+                @ptrCast(@alignCast(wrappers[index].pointer)),
+            ),
+        );
     }
-    const putres = try storage.entities.fetchPut(id, entity);
-    if (putres) |old| {
-        _ = old;
-        @panic("replacing existing entity");
-    }
-    return entity_id_comp.*;
 }
 
-pub fn removeEntities(self: *Self, ids: []EntityId) void {
+pub fn addWrapped(self: *Self, id: EntityId, components: []const ComponentWrapper) !void {
+    var vtables = try self.allocator.alloc(*const ComponentWrapper.VTable, components.len);
+    var component_ids = try self.allocator.alloc(ComponentId, components.len);
+    defer self.allocator.free(vtables);
+    defer self.allocator.free(component_ids);
+    for (components, 0..) |component, index| {
+        const vtable = component.vtable;
+        vtables[index] = vtable;
+        component_ids[index] = vtable.component_id;
+    }
+    const storage = try self.findOrCreateArchetype(component_ids, vtables);
+    const row_id = try storage.add(self.allocator, components);
+    try self.entity_map.put(id, .{
+        .archetype_index = storage.archetype_index,
+        .row_id = row_id,
+    });
+}
+
+/// Removes entities from the storage.
+///
+/// Runs deinit on all of the components.
+pub fn remove(self: *Self, ids: []EntityId) !void {
     for (ids) |id| {
-        const archetype_id = id.archetype_id orelse @panic("archetype id is null");
-        const archetype = &self.archetypes.items[archetype_id.*];
-        if (archetype.entities.getPtr(id.entity_id)) |entity| {
-            var iter = entity.components.valueIterator();
-            while (iter.next()) |c| {
-                c.vtable.deinit(c.pointer, self.allocator);
-                c.vtable.free(c.pointer, self.allocator);
-            }
-            entity.components.deinit();
-            _ = archetype.entities.orderedRemove(id.entity_id);
+        const record = self.entity_map.get(id) orelse @panic("entity does not have a record");
+        const archetype = &self.archetypes_v2.items[record.archetype_index];
+        archetype.finalize(record.row_id, self.allocator);
+        try archetype.remove(record.row_id);
+        _ = self.entity_map.remove(id);
+    }
+}
+
+pub fn addComponents(self: *Self, entity_id: EntityId, components: []ComponentWrapper) !void {
+    // find entity
+    const record = self.entity_map.get(entity_id) orelse @panic("entity does not exist");
+    std.debug.print("Retrieved record for removal {any}\n", .{record});
+    std.debug.print("Archetypes len is {any}\n", .{self.archetypes_v2.items.len});
+    const archetype = &self.archetypes_v2.items[record.archetype_index];
+
+    // sanity check
+    for (components) |wrapper| {
+        const component_id = wrapper.vtable.component_id;
+        if (archetype.components_map.contains(component_id)) {
+            @panic("adding the same component twice");
         }
     }
+
+    // create table of new components
+    var new_components = try self.allocator.alloc(
+        ComponentWrapper,
+        components.len + archetype.components_ids.len,
+    );
+    defer self.allocator.free(new_components);
+    for (archetype.components.items, 0..) |*column, index| {
+        const ptr = column.getOpaque(record.row_id);
+        const wrapper: ComponentWrapper = .{
+            .vtable = column.vtable,
+            .pointer = ptr,
+        };
+        new_components[index] = wrapper;
+    }
+    for (components, archetype.components_ids.len..) |component, index| {
+        new_components[index] = component;
+    }
+
+    // overwrites the old entity map record
+    try self.addWrapped(entity_id, new_components);
+    // we need to get archetype again as it could get realocated if
+    // new archetype has been created.
+    var old_archetype = &self.archetypes_v2.items[record.archetype_index];
+    try old_archetype.remove(record.row_id);
 }
 
-pub fn addComponents(self: *Self, entity_id: usize, archetype_id: usize, components: []ComponentWrapper) !void {
+pub fn removeComponents(self: *Self, entity_id: EntityId, components: []ComponentId) !void {
     // find entity
-    const archetype = &self.archetypes.items[archetype_id];
-    var e = archetype.entities.fetchOrderedRemove(entity_id) orelse return error.entityNotFound;
-    const entity_id_comp: *EntityId = e.value.getComponent(EntityId) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
-    try e.value.addComponents(components);
+    const record = self.entity_map.get(entity_id) orelse @panic("entity does not exist");
+    const archetype = &self.archetypes_v2.items[record.archetype_index];
 
-    const component_ids = try self.allocator.alloc(ComponentId, e.value.components.count());
-    defer self.allocator.free(component_ids);
-    var entity_iter = e.value.components.keyIterator();
-    var i: usize = 0;
-    while (entity_iter.next()) |id| {
-        component_ids[i] = id.*;
-        i += 1;
+    // sanity check
+    for (components) |wrapper| {
+        const component_id = wrapper.vtable.component_id;
+        if (!archetype.components_map.contains(component_id)) {
+            @panic("removing already removed component");
+        }
     }
 
-    std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
-
-    const new_archetype = try self.findOrCreateArchetype(component_ids);
-    if (entity_id_comp.archetype_id) |aid| {
-        aid.* = new_archetype.archetype_index;
-    } else {
-        @panic("archetype index is null");
+    // create table of new components
+    var new_components = try self.allocator.alloc(
+        ComponentWrapper,
+        archetype.components_ids.len - components.len,
+    );
+    defer self.allocator.free(new_components);
+    var index: usize = 0;
+    for (archetype.components.items) |*column| {
+        // skip over components that we want to remove
+        for (components) |component_id| {
+            if (component_id == column.component_id) {
+                continue;
+            }
+        }
+        const ptr = column.getOpaque(record.row_id);
+        const wrapper: ComponentWrapper = .{
+            .vtable = column.vtable,
+            .pointer = ptr,
+        };
+        new_components[index] = wrapper;
+        index += 1;
     }
-    try new_archetype.entities.put(entity_id, e.value);
-    return;
+    // overwrites old entity map
+    try self.add(entity_id, new_components);
+    // we need to get archetype again as it could get realocated if
+    // new archetype has been created.
+    var old_archetype = &self.archetypes_v2.items[record.archetype_index];
+    // only finalize removed components
+    old_archetype.finalizeById(record.row_id, self.allocator, components);
+    try old_archetype.remove(record.row_id);
 }
 
-pub fn removeComponents(self: *Self, entity_id: usize, archetype_id: usize, components: []ComponentId) !void {
-    const archetype = &self.archetypes.items[archetype_id];
-    const e = archetype.entities.get(entity_id) orelse return error.entityNotFound;
-    archetype.entities.remove(entity_id);
-    try e.removeComponents(components);
-    const entity_id_comp: *EntityId = e.getComponent(EntityId) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
-
-    const component_ids = try self.allocator.alloc(ComponentId, e.components.count());
-    defer self.allocator.free(component_ids);
-    var entity_iter = e.components.keyIterator();
-    var i = 0;
-    while (entity_iter.next()) |id| {
-        component_ids[i] = id;
-        i += 1;
-    }
-
-    std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
-
-    const new_archetype = try self.findOrCreateArchetype(component_ids);
-    if (entity_id_comp.archetype_id) |aid| {
-        aid.* = new_archetype.archetype_index;
-    } else {
-        @panic("archetype index is null");
-    }
-    try new_archetype.entities.put(entity_id, e);
-    return;
-}
-
-pub fn insertEntity(self: *Self, id: usize, components: std.AutoHashMap(ComponentId, ComponentWrapper)) !void {
-    var component_ids = try self.allocator.alloc(ComponentId, components.count());
-    defer self.allocator.free(component_ids);
-    const id_wrapper = components.get(utils.dynamicTypeId(
-        EntityId,
-        self.idprovider,
-    )) orelse @panic("Every entity has to have EntityId, maybe you just removed it?");
-    const entity_id_comp: *EntityId = @ptrCast(@alignCast(id_wrapper.pointer));
-    var keys = components.keyIterator();
-    var idx: usize = 0;
-    while (keys.next()) |cid| {
-        component_ids[idx] = cid.*;
-        idx += 1;
-    }
-    std.sort.heap(ComponentId, component_ids, void{}, std.sort.asc(ComponentId));
-    // global entity
-    const archetype = try self.findOrCreateArchetype(component_ids);
-    if (archetype.entities.contains(id)) {
-        return error.entityAlreadyExists;
-    }
-    const entity = Entity{
-        .id = id,
-        .components = components,
-    };
-    if (entity_id_comp.archetype_id) |aid| {
-        aid.* = archetype.archetype_index;
-    } else {
-        @panic("arhechetype id is null");
-    }
-    try archetype.entities.put(id, entity);
-}
-
-fn findOrCreateArchetype(self: *Self, ids: []ComponentId) !*ArchetypeStorage {
+fn findOrCreateArchetype(self: *Self, ids: []ComponentId, wrappers: []*const ComponentWrapper.VTable) !*Archetype {
     std.sort.heap(ComponentId, ids, {}, std.sort.asc(ComponentId));
     if (self.findExactArchetypeProvidedSorted(assertSorted(ComponentId, ids))) |ptr| {
         return ptr;
     }
-    return self.createArchetype(assertSorted(ComponentId, ids));
+    return self.createArchetype(assertSorted(ComponentId, ids), wrappers);
 }
 
-fn createArchetype(self: *Self, ids: Sorted([]ComponentId)) !*ArchetypeStorage {
-    // creating archetype invalidates cache
-    self.invalidateCache();
-    const heaped = try self.allocator.dupe(ComponentId, ids);
-    const archetype_index = self.archetypes.items.len;
-    const new = ArchetypeStorage{
-        .components = heaped,
-        .entities = .init(self.allocator),
-        .archetype_index = archetype_index,
-    };
-    try self.archetypes.append(self.allocator, new);
-    try self.components_per_archetype.append(self.allocator, heaped);
-    return &self.archetypes.items[self.archetypes.items.len - 1];
-}
-
-fn findExactArchetypeProvidedSorted(self: *Self, ids: Sorted([]ComponentId)) ?*ArchetypeStorage {
+fn findExactArchetypeProvidedSorted(self: *Self, ids: []const ComponentId) ?*Archetype {
     outer: for (self.components_per_archetype.items, 0..) |components, archetype_idx| {
         if (components.len != ids.len) {
             continue;
@@ -236,9 +485,25 @@ fn findExactArchetypeProvidedSorted(self: *Self, ids: Sorted([]ComponentId)) ?*A
                 continue :outer;
             }
         }
-        return &self.archetypes.items[archetype_idx];
+        return &self.archetypes_v2.items[archetype_idx];
     }
     return null;
+}
+
+fn createArchetype(self: *Self, ids: []ComponentId, wrappers: []*const ComponentWrapper.VTable) !*Archetype {
+    // creating archetype invalidates cache
+    self.invalidateCache();
+    const heaped = try self.allocator.dupe(ComponentId, ids);
+    const archetype_index = self.archetypes_v2.items.len;
+    const new = try Archetype.init(
+        self.allocator,
+        archetype_index,
+        heaped,
+        wrappers,
+    );
+    try self.archetypes_v2.append(self.allocator, new);
+    try self.components_per_archetype.append(self.allocator, heaped);
+    return &self.archetypes_v2.items[self.archetypes_v2.items.len - 1];
 }
 
 pub fn query(self: *Self, comptime comps: anytype, comptime exclude: anytype) QueryIter(comps) {
@@ -293,7 +558,7 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclud
     //std.debug.print("Building cache {any}\n", .{component_ids});
     var cache = std.ArrayList(usize).empty;
     var next_archetype: usize = 0;
-    while (next_archetype < self.archetypes.items.len) {
+    while (next_archetype < self.archetypes_v2.items.len) {
         const archetype_comps = self.components_per_archetype.items[next_archetype];
         if (!utils.isSubset(component_ids, archetype_comps)) {
             // not a subset, check next archetype
@@ -337,97 +602,50 @@ pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, exclude: 
     return .init(self, components, exclude, allocator);
 }
 
-fn findSubsetArchetypeProvidedSorted(self: *Self, ids: Sorted([]ComponentId)) ?*ArchetypeStorage {
-    outer: for (self.components_per_archetype.items, 0..) |components, archetype_idx| {
-        if (components.len < ids.len) {
-            continue;
-        }
-        var comp_idx = 0;
-        var ids_idx = 0;
-        while (comp_idx < components.len) {
-            while (ids_idx < ids.len) {
-                const comp_id = components[comp_idx];
-                const ids_id = ids[ids_idx];
-                if (comp_id == ids_id) {
-                    comp_idx += 1;
-                    ids_idx += 1;
-                } else if (comp_id < ids_id) {
-                    comp_id += 1;
-                } else if (comp_id > ids_id) {
-                    // component is higher, meaing we did not find a match
-                    // for the given id - so this is not the archetype
-                    continue :outer;
-                } else {
-                    unreachable;
-                }
-            }
-        }
-        if (ids_idx == ids.len) {
-            // we went through all of the ids so we have a mathc
-            return &self.archetypes.items[archetype_idx];
-        }
+pub fn createVTable(self: *Self, comptime Component: type) !*ComponentWrapper.VTable {
+    const id = utils.dynamicTypeId(Component, self.idprovider);
+    if (self.vtable_storage.get(id)) |vtable| {
+        return vtable;
     }
-    return null;
-}
+    const compDeinit: ComponentDeinit = if (comptime std.meta.hasMethod(Component, "deinit"))
+        @ptrCast(&Component.deinit)
+    else
+        @ptrCast(&emptyDeinit);
 
-pub fn allocComponent(self: *Self, comp: anytype) !ComponentWrapper {
-    const Component = @TypeOf(comp);
-    // if (comptime !std.meta.fieldNames(Component, "is_component_marker")) {
-    //     const msg = "Type " ++ @typeName(Component) ++ " is not a component. Add `pub usingnamespace Component(" ++ @typeName(Component) ++ ")`.";
-    //     @compileError(msg);
-    // }
-    const cptr = try self.allocator.create(@TypeOf(comp));
-    cptr.* = comp;
-    return self.createWrapper(Component, cptr);
+    const compLuaPush: ?ComponentLuaPush = if (comptime @hasDecl(Component, "lua_info"))
+        @ptrCast(&@TypeOf(Component.lua_info).luaPush)
+    else
+        null;
+    const wrapperFromLua: ?ComponentFromLua = if (comptime @hasDecl(Component, "lua_info"))
+        @ptrCast(&@TypeOf(Component.lua_info).wrapperFromLua)
+    else
+        null;
+    const vtable: ComponentWrapper.VTable = .{
+        .alignment = @alignOf(Component),
+        .size = @sizeOf(Component),
+        .component_id = id,
+        .name = @TypeOf(Component.component_info).comp_name,
+        .deinit = compDeinit,
+        .luaPush = compLuaPush,
+        .fromLua = wrapperFromLua,
+    };
+    return try self.vtable_storage.new(id, vtable);
 }
 
 pub fn createWrapper(self: *Self, comptime Component: type, cptr: *Component) !ComponentWrapper {
-    const id = utils.dynamicTypeId(Component, self.idprovider);
-    const vtable = if (self.vtable_storage.get(id)) |vtable| brk: {
-        break :brk vtable;
-    } else brk: {
-        const compDeinit: ComponentDeinit = if (comptime std.meta.hasMethod(Component, "deinit"))
-            @ptrCast(&Component.deinit)
-        else
-            @ptrCast(&emptyDeinit);
-
-        const compLuaPush: ?ComponentLuaPush = if (comptime @hasDecl(Component, "lua_info"))
-            @ptrCast(&@TypeOf(Component.lua_info).luaPush)
-        else
-            null;
-        const wrapperFromLua: ?ComponentFromLua = if (comptime @hasDecl(Component, "lua_info"))
-            @ptrCast(&@TypeOf(Component.lua_info).wrapperFromLua)
-        else
-            null;
-        const vtable: ComponentWrapper.VTable = .{
-            .alignment = @alignOf(Component),
-            .size = @sizeOf(Component),
-            .component_id = id,
-            .name = @TypeOf(Component.component_info).comp_name,
-            .deinit = compDeinit,
-            .free = componentFree(Component),
-            .luaPush = compLuaPush,
-            .fromLua = wrapperFromLua,
-        };
-        break :brk try self.vtable_storage.new(id, vtable);
-    };
     return .{
         .pointer = @ptrCast(cptr),
-        .vtable = vtable,
+        .vtable = try self.createVTable(Component),
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.components_per_archetype.deinit(self.allocator);
-    for (self.archetypes.items) |*archetype| {
-        self.allocator.free(archetype.components);
-        const it = archetype.entities.values();
-        for (it) |*entity| {
-            entity.deinit(self.allocator);
-        }
-        archetype.entities.deinit();
+    self.entity_map.deinit();
+    for (self.archetypes_v2.items) |*archetype| {
+        archetype.deinit(self.allocator);
     }
-    self.archetypes.deinit(self.allocator);
+    self.archetypes_v2.deinit(self.allocator);
     self.invalidateCache();
     self.queries_hash.deinit();
 }
@@ -443,14 +661,6 @@ fn invalidateCache(self: *Self) void {
         c.deinit(self.allocator);
     }
     self.queries_hash.clearRetainingCapacity();
-}
-
-pub fn componentFree(comptime T: type) ComponentFree {
-    return @ptrCast(&struct {
-        pub fn inner(ptr: *T, allocator: std.mem.Allocator) void {
-            allocator.destroy(ptr);
-        }
-    }.inner);
 }
 
 fn emptyDeinit(ptr: *anyopaque, allocator: std.mem.Allocator) void {

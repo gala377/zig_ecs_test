@@ -17,6 +17,7 @@ const system = ecs.system;
 
 pub const Initialized = struct {
     pub const component_info = Component(Initialized);
+    marker: ecs.Marker = .empty,
 };
 
 pub const LuaScript = struct {

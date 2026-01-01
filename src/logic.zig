@@ -21,6 +21,7 @@ const Commands = ecs.Commands;
 const EntityId = ecs.EntityId;
 const Without = ecs.game.Without;
 const lua_script = ecs.lua_script;
+const Marker = ecs.Marker;
 
 pub fn install(game: *Game) !void {
     std.debug.print("adding systems\n", .{});
@@ -204,7 +205,7 @@ pub fn spawn_on_click(commands: Commands, buttons: *Query(.{ Button, ButtonSpawn
             }
         }
         const next_index = max + 1;
-        _ = cmd.newSceneEntity(.{TestItem{
+        _ = cmd.addSceneEntity(.{TestItem{
             .index = next_index,
         }}) catch @panic("could not make new scene entity");
     }
@@ -212,13 +213,14 @@ pub fn spawn_on_click(commands: Commands, buttons: *Query(.{ Button, ButtonSpawn
 
 const NewCircle = struct {
     pub const component_info = Component(NewCircle);
+    marker: Marker = .empty,
 };
 
 pub fn spawn_circle(commands: Commands, buttons: *Query(.{ Button, ButtonAddCircle })) void {
     const button, _ = buttons.single();
     const cmd: *ecs.commands = commands.get();
     if (button.clicked) {
-        _ = cmd.newSceneEntity(.{ Circle{ .radius = 50.0 }, Position{ .x = 1080.0 / 2, .y = 720.0 / 2 }, Style{
+        _ = cmd.addSceneEntity(.{ Circle{ .radius = 50.0 }, Position{ .x = 1080.0 / 2, .y = 720.0 / 2 }, Style{
             .background_color = Color.white,
         }, NewCircle{} }) catch @panic("could not spawn circle");
     }
@@ -229,8 +231,8 @@ pub fn add_player(commands: Commands, buttons: *Query(.{ Button, ButtonAddPlayer
     const cmd: *ecs.commands = commands.get();
     if (button.clicked) {
         while (circles.next()) |c| {
-            const id: *EntityId = c[0];
-            cmd.addComponents(id.*, .{PlayerMarker{}}) catch @panic("could not add component to entity");
+            const id: EntityId = c[0].*;
+            cmd.addComponents(id, .{PlayerMarker{}}) catch @panic("could not add component to entity");
             break;
         }
     }
@@ -279,28 +281,34 @@ pub fn read_events(events: *EventReader(MyEvent)) void {
 
 pub const ButtonSpawn = struct {
     pub const component_info = Component(ButtonSpawn);
+    marker: Marker = .empty,
 };
 
 pub const ButtonOpen = struct {
     pub const component_info = Component(ButtonOpen);
     pub const lua_info = ExportLua(ButtonOpen, .{});
+    marker: Marker = .empty,
 };
 
 pub const ButtonClose = struct {
     pub const component_info = Component(ButtonClose);
     pub const lua_info = ExportLua(ButtonClose, .{});
+    marker: Marker = .empty,
 };
 
 pub const ButtonRemoveLast = struct {
     pub const component_info = Component(ButtonRemoveLast);
+    marker: Marker = .empty,
 };
 
 pub const ButtonAddCircle = struct {
     pub const component_info = Component(ButtonAddCircle);
+    marker: Marker = .empty,
 };
 
 pub const ButtonAddPlayer = struct {
     pub const component_info = Component(ButtonAddPlayer);
+    marker: Marker = .empty,
 };
 
 const ButtonLua = struct {
@@ -383,13 +391,14 @@ pub const Bar = struct {
 
 pub const PlayerMarker = struct {
     pub const component_info = Component(PlayerMarker);
+    marker: Marker = .empty,
 };
 
 fn setup_circle(cond: Resource(RunOnce), commands: Commands) void {
     if (cond.get().already_run) {
         return;
     }
-    _ = commands.get().newSceneEntity(.{
+    _ = commands.get().addSceneEntity(.{
         Circle{ .radius = 50.0 },
         Position{ .x = 1080.0 / 2, .y = 720.0 / 2 },
         Style{
