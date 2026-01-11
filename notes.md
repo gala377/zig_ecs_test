@@ -13,15 +13,7 @@
 
 ## What next
 
-- better system abstraction.
-  - something that abstracts both LuaSystems and normal systems.
-    `const System = struct { ctx: *anyopaque, run: *fn(*ctx, *Game) }`
-    normal systems can have context as null be we can also store 
-    local system parameters by generating a tuple for them there and casting 
-    before invoking system
-    
-    Also this would allow lua systems to be added to schedule phases
-
+- lockless multithreading of systems
 - exposing native functions to lua.
   - something that will allow us to define func 
    `fn foo(s: Lua(String), n: Lua(isize), query: *Query({Button}))`
@@ -30,7 +22,7 @@
 
    This is for lua systems and lua scripts.
 
-- system builder
+- system conditions
   - something like `system(func).run_if(cond)`
 
 - creating components/entities in lua [[#Exposing constructors to lua]]
@@ -42,6 +34,53 @@
 - exposing events in lua
 - exposing methods to lua
 
+### Lockless multithreading
+
+Some things to consider except for doing graph coloring with systems.
+
+We need to make sure that multiple queries do not affect each other.
+
+Or that 2 systems that don't share components within their signature
+cannot affect each other.
+
+- anything that uses Game* directly conflicts with everything else
+
+- commands use vtable_storage.createVTable which might allocate
+  this means we might have to put a lock there.
+  It should be fine though as again no 2 systems can use
+  commands at the same time
+
+- queries are the biggest problem
+  - Creating query uses dynamic type id which is not guarded
+    and will be a high contention point. 
+    
+    One solution would be to preinitialize it with conponent types
+    that are in sets so that lookup does not create new id 
+    meaning it will be always safe to use it.
+
+  - iterating over query also uses dynamic id which again might be okay
+    as long as we can make it so that the value is preinitialized.
+
+    **This looks like the biggest problem so far**
+
+  - if the cache doesn't have a query in it it will allocate and add
+    to cache. Meaning that the cache might need to be guarded 
+    as it can lead to data races.
+
+- Id provider and dynamic id are shared and not guarded by mutex.
+  But whenever we create a new entity they happen to be used.
+  As long as we only use them from commands though it should be fine
+  As no 2 systems that use commands can be executed at the same time.
+
+- Resources are just components on singleton entity which means that
+  we can treat them as normal components
+
+- EventReader and EventWriter are conflicting but, because they are proxies
+  we can get to their underlying resource.
+
+- Event readers technically don't conflict with each other but it seems like
+  a niche case. Probably not worth implementing. 
+
 ### Exposing more types to lua
 
 For now the last 2 types that are exposable are structs and pointers to one element.
@@ -50,21 +89,6 @@ we don't plan on supporting those.
 
 Also StringHashMap and ArrayList would be useful, array list should be kinda easy
 except how to identify it but other than that it is doable.
-
-### Better components storage
-
-Because we hold entities as archetypes we can hold components
-inline as archetypes meaning as slice of slices for example.
-This would speed up iterating over them as it mean that getting 
-next component is just incrementing an index instead of 
-doing a hashmap lookup.
-
-It would help with cache locality. Pointer stability would be a problem when
-moving entity do different archetype but as we hold components in the archetype
-we don't need to hold pointers within entity anymore. 
-
-When we move entity we can just mark the index as empty and reuse it 
-later when new entity of this archetype gets created. 
 
 
 ### Exposing constructors to lua

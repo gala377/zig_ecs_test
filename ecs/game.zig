@@ -118,7 +118,7 @@ pub const Game = struct {
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
             .frame_allocator = .init(std.heap.c_allocator),
-            .schedule = Schedule.init(allocator),
+            .schedule = Schedule.init(allocator, id_provider.idprovider()),
         };
     }
 
@@ -382,6 +382,7 @@ pub const Game = struct {
 
 /// Convienience function that adds the most important plugins.
 pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.window.WindowOptions) !void {
+    try game.schedule.addDefaultSchedule();
     try raylib.install(game, window_options, true);
     try game.addResource(LuaRuntime{ .lua = &game.lua_state });
     if (export_lua) {

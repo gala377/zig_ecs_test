@@ -555,7 +555,6 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclud
         }
     }
 
-    //std.debug.print("Building cache {any}\n", .{component_ids});
     var cache = std.ArrayList(usize).empty;
     var next_archetype: usize = 0;
     while (next_archetype < self.archetypes_v2.items.len) {
