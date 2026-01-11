@@ -22,6 +22,44 @@ pub const System = struct {
     }
 };
 
+const ChainContext = struct {
+    name: []const u8,
+    systems: []const System,
+    allocator: std.mem.Allocator,
+
+    pub fn run(ptr: ?*anyopaque, game: *Game) void {
+        const context: *ChainContext = @ptrCast(@alignCast(ptr.?));
+        for (context.systems) |sys| {
+            sys.run(game);
+        }
+    }
+
+    pub fn deinit(ptr: ?*anyopaque) void {
+        const context: *ChainContext = @ptrCast(@alignCast(ptr.?));
+        for (context.systems) |sys| {
+            sys.deinit();
+        }
+        context.allocator.free(context.systems);
+        context.allocator.destroy(context);
+    }
+};
+
+pub fn chain(allocator: std.mem.Allocator, systems: []const System) !System {
+    const context = try allocator.create(ChainContext);
+    context.* = .{
+        .name = "memory test",
+        .systems = try allocator.dupe(System, systems),
+        .allocator = allocator,
+    };
+    return .{
+        .context = @ptrCast(@alignCast(context)),
+        .vtable = &.{
+            .deinit = &ChainContext.deinit,
+            .run = &ChainContext.run,
+        },
+    };
+}
+
 fn ignore(context: ?*anyopaque) void {
     _ = context;
 }

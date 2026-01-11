@@ -182,6 +182,13 @@ pub fn install(game: *Game) !void {
     std.debug.print("adding more systems\n", .{});
     try lua_script.install(game);
     std.debug.print("done... running\n", .{});
+    _ = try game.addSystems(.setup, &.{
+        try ecs.chain(game.allocator, &.{
+            system(chain1),
+            system(chain2),
+            system(chain3),
+        }),
+    });
 }
 
 pub const MyEvent = usize;
@@ -422,4 +429,19 @@ fn move_player_marker(player: *Query(.{ PlayerMarker, Position })) void {
 
 fn finish_run(cond: Resource(RunOnce)) void {
     cond.get().already_run = true;
+}
+
+fn chain1(cond: Resource(RunOnce)) void {
+    _ = cond;
+    std.debug.print("hello 1\n", .{});
+}
+
+fn chain2(cond: Resource(RunOnce)) void {
+    _ = cond;
+    std.debug.print("hello 2\n", .{});
+}
+
+fn chain3(cond: Resource(RunOnce)) void {
+    _ = cond;
+    std.debug.print("hello 3\n", .{});
 }
