@@ -136,8 +136,6 @@ pub const Game = struct {
     }
 
     pub fn run(self: *Self) !void {
-        try self.installRuntime();
-
         self.schedule.runPhase(.setup, self);
 
         while (!self.should_close) {
@@ -156,6 +154,7 @@ pub const Game = struct {
     /// TODO: Runtime and core split doesn't make much sense honestly.
     /// I think with things like Commands it makes sense but not much more honestly.
     pub fn installRuntime(self: *Self) !void {
+        try self.schedule.addDefaultSchedule();
         try self.addResource(runtime.allocators.GlobalAllocator{ .allocator = self.allocator });
         try self.addResource(runtime.allocators.FrameAllocator{
             .allocator = self.frame_allocator.allocator(),
@@ -267,6 +266,10 @@ pub const Game = struct {
         try self.schedule.add(phase, ecs.system(sys));
     }
 
+    pub fn addSystemToSchedule(self: *Self, phase: Schedule.Phase, label: anytype, comptime sys: anytype) !void {
+        try self.schedule.addToSchedule(phase, label, ecs.system(sys));
+    }
+
     /// Add multiple systems to specific phase.
     ///
     /// Those systems have to be already wrapped into a System interface
@@ -274,6 +277,12 @@ pub const Game = struct {
     pub fn addSystems(self: *Self, phase: Schedule.Phase, systems: []const System) !void {
         for (systems) |s| {
             try self.schedule.add(phase, s);
+        }
+    }
+
+    pub fn addSystemsToSchedule(self: *Self, phase: Schedule.Phase, schedule: anytype, systems: []const System) !void {
+        for (systems) |s| {
+            try self.schedule.addToSchedule(phase, schedule, s);
         }
     }
 
@@ -382,7 +391,6 @@ pub const Game = struct {
 
 /// Convienience function that adds the most important plugins.
 pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.window.WindowOptions) !void {
-    try game.schedule.addDefaultSchedule();
     try raylib.install(game, window_options, true);
     try game.addResource(LuaRuntime{ .lua = &game.lua_state });
     if (export_lua) {

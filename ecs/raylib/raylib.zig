@@ -13,27 +13,40 @@ const Query = ecs.Query;
 const core = ecs.core;
 const shapes = ecs.core.shapes;
 const imgui = ecs.imgui;
+const DefaultSchedule = ecs.schedule.DefaultSchedule;
 
 const utils = @import("utils.zig");
 
-pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
-    try game.addResource(options);
-    try game.addSystem(.setup, initWindow);
-    try game.addSystem(.update, updateClose);
-    try game.addSystem(.pre_render, beginDraw);
+const RaylibSchedule = struct {};
 
-    try game.addSystems(.render, &.{
+pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
+    // define raylib schedules
+    try game.schedule.addSchedule(.pre_render, RaylibSchedule{}, .{});
+    try game.schedule.addSchedule(.update, RaylibSchedule{}, .{
+        DefaultSchedule,
+    });
+    try game.schedule.addSchedule(.setup, RaylibSchedule{}, .{});
+    try game.schedule.addSchedule(.render, RaylibSchedule{}, .{});
+    try game.schedule.addSchedule(.post_render, RaylibSchedule{}, .{});
+    try game.schedule.addSchedule(.tear_down, RaylibSchedule{}, .{});
+
+    try game.addResource(options);
+    try game.addSystemToSchedule(.setup, RaylibSchedule{}, initWindow);
+    try game.addSystemToSchedule(.update, RaylibSchedule{}, updateClose);
+    try game.addSystemToSchedule(.pre_render, RaylibSchedule{}, beginDraw);
+
+    try game.addSystemsToSchedule(.render, RaylibSchedule{}, &.{
         system(draw_circles),
         system(draw_rectangle),
     });
 
-    try game.addSystem(.post_render, endDraw);
-    try game.addSystem(.tear_down, closeWindow);
+    try game.addSystemToSchedule(.post_render, RaylibSchedule{}, endDraw);
+    try game.addSystemToSchedule(.tear_down, RaylibSchedule{}, closeWindow);
 
-    try game.addSystem(.render, imguiButtons);
+    try game.addSystemToSchedule(.render, RaylibSchedule{}, imguiButtons);
 
     if (show_fps) {
-        try game.addSystem(.render, showFps);
+        try game.addSystemToSchedule(.render, RaylibSchedule{}, showFps);
     }
 }
 

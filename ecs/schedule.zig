@@ -68,15 +68,16 @@ pub fn init(allocator: std.mem.Allocator, id_provider: utils.IdProvider) Self {
 }
 
 pub fn addDefaultSchedule(self: *Self) !void {
+    std.debug.print("adding default schedules\n", .{});
     inline for (@typeInfo(Phase).@"enum".fields) |f| {
-        try self.addSchedule(@enumFromInt(f.value), DefaultSchedule, .{});
+        try self.addSchedule(@enumFromInt(f.value), DefaultSchedule{}, .{});
     }
 }
 
 pub fn addSchedule(self: *Self, phase: Phase, label: anytype, after: anytype) !void {
     const after_info = @typeInfo(@TypeOf(after));
     const fields = after_info.@"struct".fields;
-    const after_ids: [fields.len]ScheduleId = undefined;
+    var after_ids: [fields.len]ScheduleId = undefined;
     inline for (after, 0..) |schedule, idx| {
         after_ids[idx] = utils.dynamicTypeId(@TypeOf(schedule), self.id_provider);
     }
@@ -94,9 +95,12 @@ pub fn addSchedule(self: *Self, phase: Phase, label: anytype, after: anytype) !v
         }
     }
     const new_schedule = Schedule{
-        .identifier = utils.dynamicTypeId(label, self.id_provider),
+        .identifier = utils.dynamicTypeId(@TypeOf(label), self.id_provider),
         .systems = .empty,
     };
+    std.debug.print("created schedule {s} with id {any}\n", .{
+        @typeName(@TypeOf(label)), new_schedule.identifier,
+    });
     if (max) |inner| {
         try phase_schedules.insert(self.allocator, inner + 1, new_schedule);
     } else {
@@ -108,6 +112,9 @@ pub fn addSchedule(self: *Self, phase: Phase, label: anytype, after: anytype) !v
 pub fn getSchedule(self: *Self, phase: Phase, schedule: anytype) !*Schedule {
     const schedules = self.getPhase(phase);
     const id = utils.dynamicTypeId(@TypeOf(schedule), self.id_provider);
+    std.debug.print("looking for schedule {s} with id {any}\n", .{
+        @typeName(@TypeOf(schedule)), id,
+    });
     for (schedules.items) |*s| {
         if (s.identifier == id) {
             return s;

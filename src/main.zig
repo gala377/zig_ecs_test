@@ -32,6 +32,7 @@ pub fn main() !void {
 
 fn runGame(allocator: std.mem.Allocator) !void {
     var game = try Game.init(allocator, .{});
+    try game.installRuntime();
     defer game.deinit();
 
     const scene = try game.newScene();

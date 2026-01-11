@@ -8,6 +8,7 @@ pub const lua_script = @import("lua_script.zig");
 pub const raylib = @import("raylib/raylib.zig");
 pub const entity = @import("entity.zig");
 pub const game = @import("game.zig");
+pub const schedule = @import("schedule.zig");
 
 pub const commands = @import("runtime/commands.zig");
 pub const Commands = commands.Commands;
