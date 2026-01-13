@@ -22,6 +22,7 @@ const EntityId = ecs.EntityId;
 const Without = ecs.game.Without;
 const lua_script = ecs.lua_script;
 const Marker = ecs.Marker;
+const GameAllocator = ecs.runtime.allocators.GlobalAllocator;
 
 pub fn install(game: *Game) !void {
     std.debug.print("adding systems\n", .{});
@@ -75,7 +76,6 @@ pub fn install(game: *Game) !void {
             .pos = position,
             .size = buttons_size,
             .title = @ptrCast(open_title),
-            .allocator = game.allocator,
         },
         ButtonOpen{},
     });
@@ -85,7 +85,6 @@ pub fn install(game: *Game) !void {
             .size = buttons_size,
             .title = @ptrCast(close_title),
             .visible = false,
-            .allocator = game.allocator,
         },
         ButtonClose{},
     });
@@ -95,7 +94,6 @@ pub fn install(game: *Game) !void {
             .pos = position.add_y(buttons_size.y * 2),
             .size = buttons_size,
             .title = @ptrCast(lua_title),
-            .allocator = game.allocator,
         },
         ButtonLua{
             .callback = ref,
@@ -107,7 +105,6 @@ pub fn install(game: *Game) !void {
             .pos = position.add_y(buttons_size.y * 3),
             .size = buttons_size,
             .title = @ptrCast(spawn_title),
-            .allocator = game.allocator,
         },
         ButtonSpawn{},
     });
@@ -117,7 +114,6 @@ pub fn install(game: *Game) !void {
             .pos = position.add_y(buttons_size.y * 4),
             .size = buttons_size,
             .title = @ptrCast(remove_last_title),
-            .allocator = game.allocator,
         },
         ButtonRemoveLast{},
     });
@@ -128,7 +124,6 @@ pub fn install(game: *Game) !void {
             .pos = position.add_y(buttons_size.y * 5),
             .size = buttons_size,
             .title = @ptrCast(add_circle_title),
-            .allocator = game.allocator,
         },
         ButtonAddCircle{},
     });
@@ -139,14 +134,15 @@ pub fn install(game: *Game) !void {
             .pos = position.add_y(buttons_size.y * 6),
             .size = buttons_size,
             .title = @ptrCast(add_player_title),
-            .allocator = game.allocator,
         },
         ButtonAddPlayer{},
     });
 
     const bar = try game.allocator.create(Bar);
     bar.* = .{ .x = 1, .y = 100 };
-    const foo: Foo = .{ .bar = bar, .allocator = game.allocator };
+    const foo: Foo = .{
+        .bar = bar,
+    };
     _ = try game.newGlobalEntity(.{
         foo,
     });
@@ -168,7 +164,8 @@ pub fn install(game: *Game) !void {
         \\ end
         \\ function f:Update()
         \\  self.counter = self.counter + 1
-        \\  if self.counter % 100 == 0 then 
+        \\  if self.counter % 100 == 0 then
+        \\    self.counter = 1
         \\    zig_yield(self.msg)
         \\  end
         \\ end
@@ -200,7 +197,11 @@ pub const TestItem = struct {
     already_logged: bool = false,
 };
 
-pub fn spawn_on_click(commands: Commands, buttons: *Query(.{ Button, ButtonSpawn }), entities: *Query(.{TestItem})) void {
+pub fn spawn_on_click(
+    commands: Commands,
+    buttons: *Query(.{ Button, ButtonSpawn }),
+    entities: *Query(.{TestItem}),
+) void {
     const button: *Button, _ = buttons.single();
     const cmd: *ecs.commands = commands.get();
     if (button.clicked) {
@@ -233,14 +234,17 @@ pub fn spawn_circle(commands: Commands, buttons: *Query(.{ Button, ButtonAddCirc
     }
 }
 
-pub fn add_player(commands: Commands, buttons: *Query(.{ Button, ButtonAddPlayer }), circles: *Query(.{ EntityId, Circle, Without(.{PlayerMarker}) })) void {
+pub fn add_player(
+    commands: Commands,
+    buttons: *Query(.{ Button, ButtonAddPlayer }),
+    circles: *Query(.{ EntityId, Circle, Without(.{PlayerMarker}) }),
+) void {
     const button, _ = buttons.single();
     const cmd: *ecs.commands = commands.get();
     if (button.clicked) {
-        while (circles.next()) |c| {
+        if (circles.next()) |c| {
             const id: EntityId = c[0].*;
             cmd.addComponents(id, .{PlayerMarker{}}) catch @panic("could not add component to entity");
-            break;
         }
     }
 }
@@ -350,16 +354,18 @@ fn close_on_button(
 
 fn call_ref(
     state: Resource(LuaRuntime),
+    game_allocator: Resource(GameAllocator),
     lua_button: *Query(.{ Button, ButtonLua }),
     close_button: *Query(.{ Button, ButtonClose }),
 ) void {
+    const allocator = game_allocator.get().allocator;
     const lua_btn: *Button, const lua_clb: *ButtonLua = lua_button.single();
     if (lua_btn.clicked) {
         const lstate: *lua.State = state.get().lua;
         const cls_btn: *Button, _ = close_button.single();
 
         lstate.pushRef(lua_clb.callback);
-        @TypeOf(@TypeOf(cls_btn.*).lua_info).luaPush(cls_btn, @ptrCast(lstate.state));
+        @TypeOf(@TypeOf(cls_btn.*).lua_info).luaPush(cls_btn, @ptrCast(lstate.state), allocator);
 
         lstate.callDontPop(1, 1);
         lstate.pop() catch {};
@@ -381,10 +387,9 @@ pub const Foo = struct {
     pub const lua_info = ExportLua(Foo, .{"allocator"});
 
     bar: *Bar,
-    allocator: std.mem.Allocator,
 
-    pub fn deinit(self: *Foo, _: std.mem.Allocator) void {
-        self.allocator.destroy(self.bar);
+    pub fn deinit(self: *Foo, allocator: std.mem.Allocator) void {
+        allocator.destroy(self.bar);
     }
 };
 

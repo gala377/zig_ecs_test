@@ -545,11 +545,11 @@ pub const DynamicQuery = struct {
         return null;
     }
 
-    pub fn luaPush(self: *Self, state: *clua.lua_State) void {
+    pub fn luaPush(self: *Self, state: *clua.lua_State, allocator: std.mem.Allocator) void {
         // std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
         const raw = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(Self))) orelse @panic("lua could not allocate memory");
         const udata: *utils.ZigPointer(Self) = @ptrCast(@alignCast(raw));
-        udata.* = utils.ZigPointer(Self){ .ptr = self };
+        udata.* = utils.ZigPointer(Self){ .ptr = self, .allocator = allocator };
         if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
             @panic("Metatable " ++ MetaTableName ++ "not found");
         }
@@ -575,7 +575,7 @@ pub const DynamicQuery = struct {
         clua.lua_createtable(state, @intCast(components.len), 0);
 
         for (components, 1..) |component, idx| {
-            component.push(component.pointer, state);
+            component.push(component.pointer, state, self.allocator);
             clua.lua_seti(state, -2, @intCast(idx));
         }
 

@@ -135,7 +135,7 @@ pub fn run(self: *Self, game: *Game) !void {
 
     state.pushRef(self.system);
     for (self.iters) |*iter| {
-        iter.luaPush(@ptrCast(state.state));
+        iter.luaPush(@ptrCast(state.state), self.allocator);
     }
     // safe call
     const call_res = lua.clib.lua_pcallk(@ptrCast(state.state), @as(c_int, @intCast(self.iters.len)), 0, errfuncIndex, 0, null);

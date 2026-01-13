@@ -145,6 +145,7 @@ pub fn isSubset(set: Sorted([]const ComponentId), of: Sorted([]const ComponentId
 pub fn ZigPointer(comptime T: type) type {
     return struct {
         ptr: *T,
+        allocator: std.mem.Allocator,
     };
 }
 

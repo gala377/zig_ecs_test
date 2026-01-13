@@ -19,7 +19,10 @@ pub fn Component(comptime T: type) ComponentInfo(@typeName(T)) {
     return .{};
 }
 
-pub fn LibComponent(comptime name_prefix: []const u8, comptime T: type) ComponentInfo(name_prefix ++ "." ++ @typeName(T)) {
+pub fn LibComponent(
+    comptime name_prefix: []const u8,
+    comptime T: type,
+) ComponentInfo(name_prefix ++ "." ++ @typeName(T)) {
     return .{};
 }
 
@@ -142,10 +145,6 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
     return struct {
         pub const MetaTableName = @TypeOf(T.component_info).comp_name ++ "_MetaTable";
 
-        comptime {
-            checkForAllocatorNeededFields();
-        }
-
         /// Check if given field is in `ingored_fields`.
         /// Check happens at compile time.
         fn isIgnoredField(comptime field: []const u8) bool {
@@ -157,37 +156,6 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             return false;
         }
 
-        /// Check if there is a field that requires allocation within the type T
-        ///
-        /// If there is check if there is an allocator field that can be used to
-        /// allocate memory for this field. If not that is a compile time error.
-        fn checkForAllocatorNeededFields() void {
-            const fields = std.meta.fields(T);
-            const has_allocator = @hasField(T, "allocator");
-            if (comptime has_allocator) {
-                return;
-            }
-            inline for (fields) |f| {
-                const info = @typeInfo(f.type);
-                if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
-                    switch (info) {
-                        .pointer => |ptr| {
-                            if (comptime ptr.size == .slice) {
-                                @compileError("type has an exported field " ++ f.name ++ " that requires allocation but is missing an allocator field");
-                            }
-                            if (comptime ptr.size == .c and ptr.child == u8) {
-                                @compileError("type has an exported field " ++ f.name ++ " that requires allocation but is missing an allocator field");
-                            }
-                            if (comptime ptr.size == .one and isLuaSupported(ptr.child)) {
-                                @compileError("type has an exported field " ++ f.name ++ " that requires allocation but is missing an allocator field");
-                            }
-                        },
-                        else => {},
-                    }
-                }
-            }
-        }
-
         /// Passes this component to lua as userdata.
         ///
         /// This component is wrapped into a pointer which means that lua does
@@ -195,11 +163,11 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         ///
         /// That means that any changes to this component in lua will be reflected
         /// and visible in zig.
-        pub fn luaPush(self: *T, state: *clua.lua_State) void {
+        pub fn luaPush(self: *T, state: *clua.lua_State, allocator: std.mem.Allocator) void {
             // std.debug.print("Pushing value of t={s}\n", .{@typeName(T)});
             const allocated = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(T))) orelse @panic("lua could not allocate");
             const udata = @as(*utils.ZigPointer(T), @ptrCast(@alignCast(allocated)));
-            udata.* = utils.ZigPointer(T){ .ptr = self };
+            udata.* = utils.ZigPointer(T){ .ptr = self, .allocator = allocator };
             if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
                 @panic("Metatable " ++ MetaTableName ++ "not found");
             }
@@ -254,7 +222,10 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                 const asSlice = std.mem.sliceTo(luaField, 0);
                 if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
                     if (std.mem.eql(u8, f.name, asSlice)) {
-                        const allocator: ?std.mem.Allocator = if (comptime @hasField(T, "allocator")) ptr.allocator else null;
+                        const allocator: std.mem.Allocator = if (comptime @hasField(T, "allocator"))
+                            ptr.allocator
+                        else
+                            udata.allocator;
                         luaPushValue(
                             f.type,
                             state,
@@ -279,10 +250,20 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             const ptr: *T = @ptrCast(@alignCast(udata.ptr));
             const luaField = clua.lua_tolstring(state, 2, null);
             const asSlice = std.mem.sliceTo(luaField, 0);
+
+            const allocator = if (comptime @hasField(T, "allocator"))
+                ptr.allocator
+            else
+                udata.allocator;
             inline for (fields) |f| {
                 if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
                     if (std.mem.eql(u8, f.name, asSlice)) {
-                        const val = luaReadValue(state, f.type, 3, if (comptime @hasField(T, "allocator")) ptr.allocator else null) catch {
+                        const val = luaReadValue(
+                            state,
+                            f.type,
+                            3,
+                            allocator,
+                        ) catch {
                             @panic("cought error while reading lua value");
                         };
                         if (comptime @typeInfo(f.type) == .pointer) {
@@ -290,9 +271,9 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                             // we should free them too. It could habe arbitrary level of nesting
                             // like a list of stucts that have strings
                             if (comptime @typeInfo(f.type).pointer.size == .one) {
-                                ptr.allocator.destroy(@field(ptr, f.name));
+                                allocator.destroy(@field(ptr, f.name));
                             } else {
-                                ptr.allocator.free(@field(ptr, f.name));
+                                allocator.free(@field(ptr, f.name));
                             }
                         }
                         @field(ptr, f.name) = val;
@@ -443,7 +424,7 @@ fn getLuaType(comptime T: type) []const u8 {
 /// Deserializes value from lua to the type of `field_type`.
 ///
 /// Intended to be used when deserializing values to set to fields.
-fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int, allocator: ?std.mem.Allocator) !field_type {
+fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int, allocator: std.mem.Allocator) !field_type {
     const info = @typeInfo(field_type);
     switch (info) {
         .bool => {
@@ -481,7 +462,7 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
                 }
                 var size: usize = undefined;
                 const lstr = clua.lua_tolstring(state, index, &size);
-                const str = try allocator.?.dupe(u8, lstr[0..size]);
+                const str = try allocator.dupe(u8, lstr[0..size]);
                 return @ptrCast(str);
             } else if (ptr.child == u8) {
                 // its a string, thats a problem we need to do allocation
@@ -490,7 +471,7 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
                 }
                 var size: usize = undefined;
                 const lstr = clua.lua_tolstring(state, index, &size);
-                const str = try allocator.?.dupeZ(u8, lstr[0..size :0]);
+                const str = try allocator.dupeZ(u8, lstr[0..size :0]);
                 return @ptrCast(str);
             }
             // now array
@@ -498,7 +479,7 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
                 return error.expectedTable;
             }
             const len = clua.lua_rawlen(state, index);
-            const res = try allocator.?.alloc(ptr.child, len);
+            const res = try allocator.alloc(ptr.child, len);
             for (0..len) |idx| {
                 _ = clua.lua_geti(state, index, @intCast(idx + 1));
                 const value = try luaReadValue(state, ptr.child, -1, allocator);
@@ -510,7 +491,7 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
             // its a string thats a problem, we need to do allocation
         } else if (ptr.size == .one and isLuaSupported(ptr.child)) {
             const value = try luaReadValue(state, ptr.child, index, allocator);
-            const obj: *ptr.child = try allocator.?.create(ptr.child);
+            const obj: *ptr.child = try allocator.create(ptr.child);
             obj.* = value;
             return obj;
         } else {
@@ -549,7 +530,7 @@ fn isLuaSupported(comptime t: type) bool {
 }
 
 /// Push value of type T onto lua stack
-fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Allocator) !void {
+fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: std.mem.Allocator) !void {
     const info = @typeInfo(T);
     switch (info) {
         .bool => {
@@ -580,7 +561,7 @@ fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Al
                 _ = clua.lua_pushstring(state, @ptrCast(val.*));
             } else {
                 // std.debug.print("Pushing slice proxy for type {s}\n", .{@typeName(T)});
-                SliceProxy(T).luaPush(val, allocator.?, state);
+                SliceProxy(T).luaPush(val, allocator, state);
             }
         } else if (ptr.size == .c and ptr.child == u8) {
             _ = clua.lua_pushstring(state, @ptrCast(val.*));
@@ -590,7 +571,7 @@ fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Al
             return error.unsupportedType;
         },
         .@"struct" => if (isLuaSupported(T)) {
-            @TypeOf(T.lua_info).luaPush(val, state);
+            @TypeOf(T.lua_info).luaPush(val, state, allocator);
         } else {
             return error.unsupportedType;
         },
@@ -599,4 +580,57 @@ fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: ?std.mem.Al
             return error.unsupportedType;
         },
     }
+}
+
+const TypeRegistry = struct {
+    types: std.AutoHashMap(usize, Deserializers),
+    names_to_ids: std.StringHashMap(usize),
+    allocator: std.mem.Allocator,
+
+    pub fn new(allocator: std.mem.Allocator) TypeRegistry {
+        return .{
+            .allocator = allocator,
+            .types = .init(allocator),
+            .names_to_ids = .init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *TypeRegistry) void {
+        self.types.deinit();
+        const keys = self.names_to_ids.keyIterator();
+        while (keys.next()) |key| {
+            self.allocator.free(key.*);
+        }
+        self.names_to_ids.deinit();
+    }
+};
+
+const Deserializers = struct {
+    fromLau: *const fn (state: *clua.lua_State, allocator: std.mem.Allocator) ?*anyopaque,
+    fromJson: *const fn (value: std.json.Value, allocator: std.mem.Allocator) ?*anyopaque,
+};
+
+fn MakeDeserializers(comptime T: type) Deserializers {
+    const deserializer = struct {
+        fn fromLua(state: *clua.lua_State, allocator: std.mem.Allocator) ?*anyopaque {
+            _ = state;
+            _ = allocator;
+            // we should expect that top is us
+            unreachable;
+        }
+        fn fromJson(value: std.json.Value, allocator: std.mem.Allocator) ?*anyopaque {
+            const obj = allocator.create(T) catch @panic("could not allocate memory");
+            obj.* = std.json.parseFromValueLeaky(
+                T,
+                allocator,
+                value,
+                .{},
+            ) catch @panic("could not parse value");
+            return @ptrCast(@alignCast(obj));
+        }
+    };
+    return .{
+        .fromLua = &deserializer.fromLua,
+        .fromJson = &deserializer.fromJson,
+    };
 }

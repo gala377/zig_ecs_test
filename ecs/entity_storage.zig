@@ -18,7 +18,7 @@ const Self = @This();
 
 pub const ComponentDeinit = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentFree = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
-pub const ComponentLuaPush = *const fn (*anyopaque, state: *clua.lua_State) void;
+pub const ComponentLuaPush = *const fn (*anyopaque, state: *clua.lua_State, allocator: std.mem.Allocator) void;
 pub const ComponentFromLua = *const fn (state: *clua.lua_State, storage: *Self) void;
 
 // Maps entities to their respective archetypes so we can

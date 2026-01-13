@@ -16,10 +16,8 @@ pub const Button = struct {
     title: [:0]const u8,
     visible: bool = true,
     clicked: bool = false,
-    allocator: std.mem.Allocator,
 
     pub fn deinit(self: *Button, allocator: std.mem.Allocator) void {
-        _ = allocator;
-        self.allocator.free(self.title);
+        allocator.free(self.title);
     }
 };
