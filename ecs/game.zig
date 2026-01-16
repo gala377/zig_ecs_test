@@ -160,7 +160,7 @@ pub const Game = struct {
             .allocator = self.frame_allocator.allocator(),
             .arena = &self.frame_allocator,
         });
-        try self.addResource(GameActions{ .should_close = false, .allocator = self.allocator, .log = &.{} });
+        try self.addResource(GameActions{ .should_close = false, .log = &.{} });
         try self.addResource(commands.init(self));
         try self.addSystem(.post_update, applyGameActions);
         try self.addSystem(.post_update, commands_system.create_entities);

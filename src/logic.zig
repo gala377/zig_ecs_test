@@ -384,7 +384,7 @@ pub const RunOnce = struct {
 
 pub const Foo = struct {
     pub const component_info = Component(Foo);
-    pub const lua_info = ExportLua(Foo, .{"allocator"});
+    pub const lua_info = ExportLua(Foo, .{});
 
     bar: *Bar,
 

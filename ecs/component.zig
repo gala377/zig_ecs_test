@@ -218,14 +218,15 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             const udata: *utils.ZigPointer(T) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
             const ptr: *T = @ptrCast(@alignCast(udata.ptr));
             const luaField = clua.lua_tolstring(state, 2, null);
+            const allocator: std.mem.Allocator = if (comptime @hasField(T, "allocator"))
+                ptr.allocator
+            else
+                udata.allocator;
             inline for (fields) |f| {
                 const asSlice = std.mem.sliceTo(luaField, 0);
+                // only push fields that support lua proxing
                 if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
                     if (std.mem.eql(u8, f.name, asSlice)) {
-                        const allocator: std.mem.Allocator = if (comptime @hasField(T, "allocator"))
-                            ptr.allocator
-                        else
-                            udata.allocator;
                         luaPushValue(
                             f.type,
                             state,
@@ -251,32 +252,34 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             const luaField = clua.lua_tolstring(state, 2, null);
             const asSlice = std.mem.sliceTo(luaField, 0);
 
+            // use type allocator if possible if not use generic one
             const allocator = if (comptime @hasField(T, "allocator"))
                 ptr.allocator
             else
                 udata.allocator;
             inline for (fields) |f| {
-                if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
+                if (!isIgnoredField(f.name)) {
                     if (std.mem.eql(u8, f.name, asSlice)) {
-                        const val = luaReadValue(
-                            state,
+                        freeRecursive(
                             f.type,
+                            &@field(ptr, f.name),
+                            allocator,
+                        );
+                        // TODO: doesn't handle a case where we assing userdata
+                        // there are 2 cases to consider:
+                        // 1. we assing to pointer => we just copy userdata pointer
+                        // 2. we assing to value => we need to do shallow copy
+                        //
+                        // in other cases we do the thing here which is we just
+                        // read the value as deserialized.
+                        @field(ptr, f.name) = fromLua(
+                            f.type,
+                            state,
                             3,
                             allocator,
                         ) catch {
-                            @panic("cought error while reading lua value");
+                            @panic("could not read value from lua");
                         };
-                        if (comptime @typeInfo(f.type) == .pointer) {
-                            // TODO: this has to be recusrive, like if elements of the slice need freeing
-                            // we should free them too. It could habe arbitrary level of nesting
-                            // like a list of stucts that have strings
-                            if (comptime @typeInfo(f.type).pointer.size == .one) {
-                                allocator.destroy(@field(ptr, f.name));
-                            } else {
-                                allocator.free(@field(ptr, f.name));
-                            }
-                        }
-                        @field(ptr, f.name) = val;
                     }
                 }
             }
@@ -388,6 +391,68 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         }
     };
 }
+
+fn freeRecursive(comptime T: type, val: *const T, allocator: std.mem.Allocator) void {
+    const info = @typeInfo(T);
+    switch (info) {
+        .@"opaque" => {
+            @panic("dont know how to free opaque types");
+        },
+        .@"anyframe", .frame => {
+            @panic("dont know how to free frame types");
+        },
+        .@"struct" => |str| {
+            inline for (str.fields) |field| {
+                const payload = &@field(val.*, field.name);
+                freeRecursive(field.type, payload, allocator);
+            }
+        },
+        .@"union" => |un| {
+            if (un.tag_type == null) {
+                @panic("only unions with tags are supported");
+            }
+            const active_tag = std.meta.activeTag(val.*);
+            inline for (un.fields) |field| {
+                if (active_tag == @field(std.meta.Tag(T), field.name)) {
+                    const payload = &@field(val.*, field.name);
+                    freeRecursive(field.type, payload, allocator);
+                }
+            }
+        },
+        .optional => |opt| {
+            if (val.*) |*inner| {
+                freeRecursive(opt.child, inner, allocator);
+            }
+        },
+        .pointer => |ptr| {
+            switch (ptr.size) {
+                .one => {
+                    freeRecursive(ptr.child, val.*, allocator);
+                    allocator.destroy(val.*);
+                },
+                .slice => {
+                    for (val.*) |*inner| {
+                        freeRecursive(ptr.child, inner, allocator);
+                    }
+                    allocator.free(val.*);
+                },
+                .c => {
+                    @panic("c pointers are not supported");
+                },
+                .many => {
+                    @panic("many pointers are not supported");
+                },
+            }
+        },
+        .array => |arr| {
+            for (val.*) |*item| {
+                freeRecursive(arr.child, item, allocator);
+            }
+        },
+        else => {},
+    }
+}
+
 /// Generates code that is used to interoperate with Lua.
 ///
 /// Ignore fields has to be a tuple of strings
@@ -419,6 +484,140 @@ fn getLuaType(comptime T: type) []const u8 {
         },
         else => "any",
     };
+}
+
+const luaDeserializeFn = *const fn (
+    state: *clua.lua_State,
+    index: c_int,
+    allocator: std.mem.Allocator,
+) *anyopaque;
+
+fn fromLuaAny(comptime T: type) luaDeserializeFn {
+    return &struct {
+        fn deserialize(state: *clua.lua_State, index: c_int, allocator: std.mem.Allocator) *anyopaque {
+            const ret = allocator.create(T) catch {
+                @panic("Could not allocate space for a type");
+            };
+            ret.* = fromLua(T, state, index, allocator) catch |e| {
+                std.debug.panic("error while deserializing from lua {any}", e);
+            };
+            return @ptrCast(@alignCast(ret));
+        }
+    }.deserialize;
+}
+
+fn fromLua(comptime T: type, state: *clua.lua_State, index: c_int, allocator: std.mem.Allocator) !T {
+    const info = @typeInfo(T);
+    switch (info) {
+        .bool => {
+            if (clua.lua_type(state, index) != clua.LUA_TBOOLEAN) {
+                return error.expectedBoolean;
+            }
+            const value = clua.lua_toboolean(state, index);
+            return value == 1;
+        },
+        .int => {
+            if (clua.lua_type(state, index) != clua.LUA_TNUMBER) {
+                return error.expectedInteger;
+            }
+            const value = clua.lua_tointegerx(state, index, null);
+            return @intCast(value);
+        },
+        .float => {
+            if (clua.lua_type(state, index) != clua.LUA_TNUMBER) {
+                return error.expectedNumber;
+            }
+            const value = clua.lua_tonumberx(state, index, null);
+            return @floatCast(value);
+        },
+        .optional => |opt| {
+            if (clua.lua_isnil(state, index)) {
+                return null;
+            }
+            return try fromLua(opt.child, state, index, allocator);
+        },
+        .@"struct" => |s| {
+            if (clua.lua_type(state, index) != clua.LUA_TTABLE) {
+                return error.expectedTable;
+            }
+            var ret: T = undefined;
+            inline for (s.fields) |f| {
+                _ = clua.lua_getfield(state, index, f.name.ptr);
+                @field(ret, f.name) = try fromLua(f.type, state, -1, allocator);
+            }
+            return ret;
+        },
+        .@"union" => |union_info| {
+            if (union_info.tag_type == null) @compileError("Only tagged unions are supported");
+            if (clua.lua_type(state, index) == clua.LUA_TTABLE) return error.expectedTable;
+
+            // Push nil to start the table traversal
+            clua.lua_pushnil(state);
+
+            // lua_next(L, index) pops the key and pushes the next key-value pair
+            // Because we expect { tagName = value }, we only need the first pair
+            if (clua.lua_next(state, if (index < 0) index - 1 else index) != 0) {
+                // Stack is now: [..., key, value]
+                defer clua.lua_pop(state, 2); // Clean up key and value
+
+                // 1. Convert the key (tag name) to a string
+                var name_len: usize = 0;
+                const name_ptr = clua.lua_tolstring(state, -2, &name_len);
+                if (name_ptr == null) return error.InvalidUnionKey;
+                const active_tag_name = name_ptr[0..name_len];
+
+                // 2. Iterate comptime fields to find the match
+                inline for (union_info.fields) |field| {
+                    if (std.mem.eql(u8, field.name, active_tag_name)) {
+                        // Recursively parse the value at index -1
+                        const payload = try fromLua(field.type, state, -1, allocator);
+                        return @unionInit(T, field.name, payload);
+                    }
+                }
+                return error.UnknownUnionTag;
+            }
+            return error.EmptyUnionTable;
+        },
+        .pointer => |ptr_info| {
+            if (ptr_info.size == .slice and ptr_info.child == u8) {
+                // Handle Strings
+                var len: usize = 0;
+                const ptr = clua.lua_tolstring(state, index, &len);
+                if (ptr == null) return error.expectedString;
+
+                if (ptr_info.sentinel()) |sentinel| {
+                    if (comptime sentinel != @as(u8, 0)) {
+                        @compileError("only 0 sentinels are supported");
+                    }
+                    return try allocator.dupeZ(u8, ptr[0..len]);
+                } else {
+                    return try allocator.dupe(u8, ptr[0..len]);
+                }
+            } else if (ptr_info.size == .slice) {
+                // Handle Slices (Lua Arrays)
+                if (clua.lua_type(state, index) == clua.LUA_TTABLE) return error.expectedArray;
+
+                const len = clua.lua_rawlen(state, index);
+                const slice = try allocator.alloc(ptr_info.child, len);
+                errdefer allocator.free(slice);
+
+                var i: usize = 0;
+                while (i < len) : (i += 1) {
+                    _ = clua.lua_rawgeti(state, index, @intCast(i + 1)); // Lua is 1-indexed
+                    defer clua.lua_pop(state, 1);
+                    slice[i] = try fromLua(ptr_info.child, state, -1, allocator);
+                }
+                return slice;
+            } else if (ptr_info.size == .one) {
+                const ret: *ptr_info.child = try allocator.create(ptr_info.child);
+                errdefer allocator.destroy(ret);
+                ret.* = try fromLua(ptr_info.child, state, index, allocator);
+                return ret;
+            }
+            @compileError("Unsupported pointer type: " ++ @typeName(T));
+        },
+        else => @compileError("Type not supported: " ++ @typeName(T)),
+    }
 }
 
 /// Deserializes value from lua to the type of `field_type`.
@@ -489,7 +688,7 @@ fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int,
         } else if (ptr.size == .c and ptr.child == u8) {
             return error.cStringsUnsupported;
             // its a string thats a problem, we need to do allocation
-        } else if (ptr.size == .one and isLuaSupported(ptr.child)) {
+        } else if (ptr.size == .one) {
             const value = try luaReadValue(state, ptr.child, index, allocator);
             const obj: *ptr.child = try allocator.create(ptr.child);
             obj.* = value;

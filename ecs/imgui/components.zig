@@ -9,11 +9,11 @@ const ExportLua = @import("../component.zig").ExportLua;
 
 pub const Button = struct {
     pub const component_info = Component(component_prefix, Button);
-    pub const lua_info = ExportLua(Button, .{"allocator"});
+    pub const lua_info = ExportLua(Button, .{"title"});
 
     pos: Vec2 = .{ .x = 0.0, .y = 0.0 },
     size: Vec2 = .{ .x = 0.0, .y = 0.0 },
-    title: [:0]const u8,
+    title: [:0]const u8 = &.{},
     visible: bool = true,
     clicked: bool = false,
 
