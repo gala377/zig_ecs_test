@@ -1,6 +1,9 @@
-const Component = @import("../component.zig").LibComponent;
 const component_prefix = @import("build_options").components_prefix;
-const ExportLua = @import("../component.zig").ExportLua;
+
+const ecs = @import("../root.zig");
+const Component = ecs.component.LibComponent;
+const ExportLua = ecs.lua.export_component.ExportLua;
+
 const Color = @import("color.zig");
 
 const Self = @This();

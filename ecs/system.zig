@@ -23,7 +23,6 @@ pub const System = struct {
 };
 
 const ChainContext = struct {
-    name: []const u8,
     systems: []const System,
     allocator: std.mem.Allocator,
 
@@ -47,7 +46,6 @@ const ChainContext = struct {
 pub fn chain(allocator: std.mem.Allocator, systems: []const System) !System {
     const context = try allocator.create(ChainContext);
     context.* = .{
-        .name = "memory test",
         .systems = try allocator.dupe(System, systems),
         .allocator = allocator,
     };
@@ -140,4 +138,43 @@ fn mkFnSystem(comptime F: anytype) fn (?*anyopaque, *Game) void {
             return @call(.auto, F, queries);
         }
     }.call;
+}
+
+const ConcurrentContext = struct {
+    systems: []const System,
+    allocator: std.mem.Allocator,
+
+    pub fn run(ptr: ?*anyopaque, game: *Game) void {
+        const context: *ConcurrentContext = @ptrCast(@alignCast(ptr.?));
+        for (context.systems) |sys| {
+            sys.run(game);
+        }
+    }
+
+    pub fn deinit(ptr: ?*anyopaque) void {
+        const context: *ConcurrentContext = @ptrCast(@alignCast(ptr.?));
+        for (context.systems) |sys| {
+            sys.deinit();
+        }
+        context.allocator.free(context.systems);
+        context.allocator.destroy(context);
+    }
+};
+
+/// Used to make group of systems concurrent
+/// TODO:
+/// Doesn't do anything now, it's there for 0.16 Io green threads implementation
+pub fn concurrent(allocator: std.mem.Allocator, systems: []const System) !System {
+    const context = try allocator.create(ConcurrentContext);
+    context.* = .{
+        .systems = try allocator.dupe(System, systems),
+        .allocator = allocator,
+    };
+    return .{
+        .context = @ptrCast(@alignCast(context)),
+        .vtable = &.{
+            .deinit = &ConcurrentContext.deinit,
+            .run = &ConcurrentContext.run,
+        },
+    };
 }

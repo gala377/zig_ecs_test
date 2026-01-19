@@ -4,13 +4,14 @@ const component_prefix = @import("build_options").components_prefix;
 const lua = @import("lua_lib");
 
 const component = @import("component.zig");
-const ComponentId = @import("component.zig").ComponentId;
+const ComponentId = component.ComponentId;
 const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
 const utils = @import("utils.zig");
+const ExportLua = @import("lua_interop/root.zig").export_component.ExportLua;
 
 pub const EntityId = struct {
     pub const component_info = component.LibComponent(component_prefix, EntityId);
-    pub const lua_info = component.ExportLua(EntityId, .{});
+    pub const lua_info = ExportLua(EntityId, .{});
     scene_id: usize,
     entity_id: usize,
 };

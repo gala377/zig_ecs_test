@@ -289,8 +289,8 @@ entity_map: EntityMap,
 components_per_archetype: std.ArrayList(Sorted([]const ComponentId)),
 queries_hash: std.AutoHashMap(u64, std.ArrayList(CacheEntry)),
 allocator: std.mem.Allocator,
-idprovider: utils.IdProvider,
 vtable_storage: *VTableStorage,
+mutex: std.Thread.Mutex,
 
 const CacheEntry = struct {
     components: []const ComponentId,
@@ -298,16 +298,16 @@ const CacheEntry = struct {
     archetypes: []const usize,
 };
 
-pub fn init(allocator: std.mem.Allocator, idprovider: utils.IdProvider, vtable_storage: *VTableStorage) !Self {
+pub fn init(allocator: std.mem.Allocator, vtable_storage: *VTableStorage) !Self {
     return .{
         //.archetypes = .empty,
         .components_per_archetype = .empty,
         .allocator = allocator,
         .queries_hash = .init(allocator),
-        .idprovider = idprovider,
         .vtable_storage = vtable_storage,
         .entity_map = .init(allocator),
         .archetypes_v2 = .empty,
+        .mutex = .{},
     };
 }
 
@@ -518,7 +518,7 @@ pub fn query(self: *Self, comptime comps: anytype, comptime exclude: anytype) Qu
         if (tinfo != .type) {
             @compileError("query accepts a typle of types");
         }
-        componentIds[index] = utils.dynamicTypeId(component, self.idprovider);
+        componentIds[index] = utils.typeId(component);
     }
     std.sort.heap(ComponentId, &componentIds, {}, std.sort.asc(ComponentId));
     _ = assertSorted(ComponentId, &componentIds);
@@ -534,18 +534,21 @@ pub fn query(self: *Self, comptime comps: anytype, comptime exclude: anytype) Qu
         if (tinfo != .type) {
             @compileError("query accepts a typle of types");
         }
-        excludeIds[index] = utils.dynamicTypeId(component, self.idprovider);
+        excludeIds[index] = utils.typeId(component);
     }
     std.sort.heap(ComponentId, &excludeIds, {}, std.sort.asc(ComponentId));
     _ = assertSorted(ComponentId, &excludeIds);
 
     const cache: []const usize = self.lookupQueryHash(&componentIds, &excludeIds) catch @panic("could not build cache");
-    return QueryIter(comps).init(self, componentIds, cache, self.idprovider);
+    return QueryIter(comps).init(self, componentIds, cache);
 }
 
 pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclude_ids: Sorted([]ComponentId)) ![]const usize {
+    self.mutex.lock();
+    defer self.mutex.unlock();
     const query_hash = fnv1a64(component_ids, exclude_ids);
     if (self.queries_hash.get(query_hash)) |cache_entries| {
+        // found in cache
         for (cache_entries.items) |entry| {
             if (std.mem.eql(ComponentId, entry.components, component_ids)) {
                 if (std.mem.eql(ComponentId, entry.exclude, exclude_ids)) {
@@ -554,7 +557,7 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclud
             }
         }
     }
-
+    // not found, needs to recalculate cache
     var cache = std.ArrayList(usize).empty;
     var next_archetype: usize = 0;
     while (next_archetype < self.archetypes_v2.items.len) {
@@ -602,7 +605,7 @@ pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, exclude: 
 }
 
 pub fn createVTable(self: *Self, comptime Component: type) !*ComponentWrapper.VTable {
-    const id = utils.dynamicTypeId(Component, self.idprovider);
+    const id = utils.typeId(Component);
     if (self.vtable_storage.get(id)) |vtable| {
         return vtable;
     }

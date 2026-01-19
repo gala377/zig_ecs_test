@@ -5,7 +5,7 @@ const Vec2 = @import("../core/core.zig").Vec2;
 const ComponentDeinit = @import("../scene.zig").ComponentDeinit;
 
 const Component = @import("../component.zig").LibComponent;
-const ExportLua = @import("../component.zig").ExportLua;
+const ExportLua = @import("../lua_interop/export.zig").ExportLua;
 
 pub const Button = struct {
     pub const component_info = Component(component_prefix, Button);

@@ -25,7 +25,7 @@ pub const Scene = struct {
             .scene_allocator = allocator,
             .inner_id = 0,
             .idprovider = idprovider,
-            .entity_storage = try EntityStorage.init(allocator, idprovider, vtable_storage),
+            .entity_storage = try EntityStorage.init(allocator, vtable_storage),
         };
     }
 

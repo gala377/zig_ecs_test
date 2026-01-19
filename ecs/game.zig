@@ -115,11 +115,11 @@ pub const Game = struct {
             .options = options,
             .inner_id = 1,
             .current_scene = null,
-            .global_entity_storage = try entity_storage.init(allocator, id_provider.idprovider(), vtable_storage),
+            .global_entity_storage = try entity_storage.init(allocator, vtable_storage),
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
             .frame_allocator = .init(std.heap.c_allocator),
-            .schedule = Schedule.init(allocator, id_provider.idprovider()),
+            .schedule = Schedule.init(allocator),
         };
     }
 
@@ -169,8 +169,9 @@ pub const Game = struct {
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
+        std.debug.print("Exporting {s} = {any}\n", .{ @typeName(Comp), utils.typeId(Comp) });
         @TypeOf(Comp.lua_info).registerMetaTable(self.lua_state);
-        @TypeOf(Comp.lua_info).exportId(@ptrCast(self.lua_state.state), self.idprovider.idprovider(), self.allocator) catch {
+        @TypeOf(Comp.lua_info).exportId(self.lua_state.state, self.allocator) catch {
             @panic("could not export component to lua");
         };
     }

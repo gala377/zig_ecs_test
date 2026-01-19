@@ -51,9 +51,8 @@ post_render_systems: std.ArrayList(Schedule),
 tear_down_systems: std.ArrayList(Schedule),
 
 allocator: std.mem.Allocator,
-id_provider: utils.IdProvider,
 
-pub fn init(allocator: std.mem.Allocator, id_provider: utils.IdProvider) Self {
+pub fn init(allocator: std.mem.Allocator) Self {
     return .{
         .setup_systems = .empty,
         .update_systems = .empty,
@@ -63,7 +62,6 @@ pub fn init(allocator: std.mem.Allocator, id_provider: utils.IdProvider) Self {
         .post_render_systems = .empty,
         .tear_down_systems = .empty,
         .allocator = allocator,
-        .id_provider = id_provider,
     };
 }
 
@@ -79,7 +77,7 @@ pub fn addSchedule(self: *Self, phase: Phase, label: anytype, after: anytype) !v
     const fields = after_info.@"struct".fields;
     var after_ids: [fields.len]ScheduleId = undefined;
     inline for (after, 0..) |schedule, idx| {
-        after_ids[idx] = utils.dynamicTypeId(@TypeOf(schedule), self.id_provider);
+        after_ids[idx] = utils.typeId(@TypeOf(schedule));
     }
     const phase_schedules = self.getPhase(phase);
     var max: ?usize = null;
@@ -95,11 +93,11 @@ pub fn addSchedule(self: *Self, phase: Phase, label: anytype, after: anytype) !v
         }
     }
     const new_schedule = Schedule{
-        .identifier = utils.dynamicTypeId(@TypeOf(label), self.id_provider),
+        .identifier = utils.typeId(@TypeOf(label)),
         .systems = .empty,
     };
-    std.debug.print("created schedule {s} with id {any}\n", .{
-        @typeName(@TypeOf(label)), new_schedule.identifier,
+    std.debug.print("created schedule {s}::{s} with id {any}\n", .{
+        @tagName(phase), @typeName(@TypeOf(label)), new_schedule.identifier,
     });
     if (max) |inner| {
         try phase_schedules.insert(self.allocator, inner + 1, new_schedule);
@@ -111,10 +109,7 @@ pub fn addSchedule(self: *Self, phase: Phase, label: anytype, after: anytype) !v
 
 pub fn getSchedule(self: *Self, phase: Phase, schedule: anytype) !*Schedule {
     const schedules = self.getPhase(phase);
-    const id = utils.dynamicTypeId(@TypeOf(schedule), self.id_provider);
-    std.debug.print("looking for schedule {s} with id {any}\n", .{
-        @typeName(@TypeOf(schedule)), id,
-    });
+    const id = utils.typeId(@TypeOf(schedule));
     for (schedules.items) |*s| {
         if (s.identifier == id) {
             return s;

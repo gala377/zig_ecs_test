@@ -301,7 +301,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         ///     component_hash = dynamic_id,
         ///     metatable_bame = component_meta_table_name,
         /// }
-        pub fn exportId(state: *lua.CLuaState, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !void {
+        pub fn exportId(state: *lua.CLuaState, allocator: std.mem.Allocator) !void {
             const comp_name: []const u8 = @TypeOf(T.component_info).comp_name;
             std.debug.print("Exporting component {s}\n", .{comp_name});
             var segments = std.mem.splitScalar(u8, comp_name, '.');
@@ -331,7 +331,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             const th = clua.lua_getfield(state, -1, "component_hash");
             if (th == clua.LUA_TNIL) {
                 clua.lua_pop(state, 1);
-                const id = utils.dynamicTypeId(T, idprovider);
+                const id = utils.typeId(T);
                 const lua_id: c_longlong = @bitCast(id);
                 clua.lua_pushinteger(state, lua_id);
                 clua.lua_setfield(state, -2, "component_hash");

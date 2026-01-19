@@ -159,17 +159,10 @@ pub const IdProvider = struct {
     }
 };
 
-pub fn dynamicTypeId(comptime T: type, id_provider: ?IdProvider) usize {
+pub fn typeId(comptime T: type) usize {
     const id = &struct {
         const _ = T;
-        var id: ?usize = null;
+        var id: u8 = undefined;
     }.id;
-    if (id.*) |val| {
-        return val;
-    }
-    if (id_provider == null) {
-        @panic("both null cannot do much about it");
-    }
-    id.* = id_provider.?.next();
-    return id.*.?;
+    return @intFromPtr(id);
 }

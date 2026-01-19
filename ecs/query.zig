@@ -14,18 +14,16 @@ pub fn QueryIter(comptime Components: anytype) type {
         storage: *Storage,
         next_archetype: usize = 0,
         cache: []const usize,
-        idprovider: utils.IdProvider,
 
         archetype_entity_index: usize = 0,
         archetype_entities: usize = 0,
         archetype: ?*Archetype = null,
 
-        pub fn init(storage: *Storage, component_ids: [Len]ComponentId, cache: []const usize, idprovider: utils.IdProvider) Iter {
+        pub fn init(storage: *Storage, component_ids: [Len]ComponentId, cache: []const usize) Iter {
             return .{
                 .component_ids = component_ids,
                 .storage = storage,
                 .cache = cache,
-                .idprovider = idprovider,
             };
         }
 
@@ -61,7 +59,7 @@ pub fn QueryIter(comptime Components: anytype) type {
         pub fn getComponentsFromCurrentArchetype(self: *Iter) PtrTuple(Components) {
             var res: PtrTuple(Components) = undefined;
             inline for (Components, 0..) |Component, idx| {
-                const id = utils.dynamicTypeId(Component, self.idprovider);
+                const id = utils.typeId(Component);
                 const comp_column = self.archetype.?.components_map.get(id) orelse unreachable;
                 const comp_ptr = self.archetype.?.components.items[comp_column].getAs(
                     self.archetype_entity_index,

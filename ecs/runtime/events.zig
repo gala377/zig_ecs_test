@@ -1,14 +1,16 @@
 const std = @import("std");
 const lua = @import("lua_lib");
+const ecs = @import("../root.zig");
 
 const component_prefix = @import("build_options").components_prefix;
-const component = @import("../component.zig");
+const component = ecs.component;
 const Component = component.LibComponent;
-const ExportLua = component.ExportLua;
+const ExportLua = ecs.ExportLua;
+
 const ResourceProxy = @import("../mapped.zig").ResourceProxy;
-const Resource = @import("../resource.zig").Resource;
-const Game = @import("../game.zig").Game;
-const System = @import("../system.zig").System;
+const Resource = ecs.Resource;
+const Game = ecs.Game;
+const System = ecs.system_mod.System;
 
 pub fn EventBuffer(comptime T: type) type {
     return struct {

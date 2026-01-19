@@ -1,10 +1,11 @@
 const std = @import("std");
 const lua = @import("lua_lib");
+const ecs = @import("../root.zig");
 
 const component_prefix = @import("build_options").components_prefix;
-const component = @import("../component.zig");
+const component = ecs.component;
 const Component = component.LibComponent;
-const ExportLua = component.ExportLua;
+const ExportLua = ecs.lua.export_component.ExportLua;
 
 const Self = @This();
 
