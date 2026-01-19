@@ -1,5 +1,5 @@
 const std = @import("std");
-const lua = @cImport({
+pub const lua = @cImport({
     @cInclude("lua.h");
     @cInclude("lualib.h");
     @cInclude("lauxlib.h");
@@ -209,6 +209,24 @@ pub const LuaState = struct {
 
     pub fn newTable(self: Self) void {
         lua.lua_newtable(self.state);
+    }
+
+    pub fn pushLightUserData(self: Self, data: *anyopaque) void {
+        lua.lua_pushlightuserdata(self.state, data);
+    }
+
+    // Pushes a c free function to the top of the stack
+    // The closure argument describes how many arguments from the stack
+    // will be captured as "closure". Meaning they are stored alongside
+    // function and can be accessed through lua state when the function is being called.
+    pub fn pushClosure(self: Self, closure: isize, func: *const fn (?*lua.lua_State) callconv(.c) c_int) void {
+        lua.lua_pushcclosure(self.state, func, @intCast(closure));
+    }
+
+    // Sets global under name `name` to top of the stack.
+    // Pops the value from top of the stack
+    pub fn setGlobalFromTop(self: Self, name: [*c]const u8) void {
+        lua.lua_setglobal(self.state, name);
     }
 };
 

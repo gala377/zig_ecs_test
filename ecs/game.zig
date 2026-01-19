@@ -5,22 +5,30 @@ const ecs = @import("root.zig");
 const lua = @import("lua_lib");
 const clua = lua.clib;
 
+const entity_storage = @import("entity_storage.zig");
+const dynamic_query = @import("dynamic_query.zig");
+const lua_interop = @import("lua_interop/root.zig");
+const utils = @import("utils.zig");
+const VTableStorage = @import("comp_vtable_storage.zig");
+const Schedule = @import("schedule.zig");
+const core = @import("core/core.zig");
+const raylib = @import("raylib/raylib.zig");
 const component_mod = ecs.component;
+
+const Scene = @import("scene.zig").Scene;
+const System = @import("system.zig").System;
+const LuaSystem = lua_interop.system;
 const Component = component_mod.LibComponent;
 const ComponentId = component_mod.ComponentId;
-const DeclarationGenerator = @import("declaration_generator.zig");
-const dynamic_query = @import("dynamic_query.zig");
 const DynamicQueryIter = dynamic_query.DynamicQueryIter;
 const DynamicQueryScope = dynamic_query.DynamicQueryScope;
 const LuaAccessibleOpaqueComponent = dynamic_query.LuaAccessibleOpaqueComponent;
 const Entity = ecs.entity;
 const EntityId = Entity.EntityId;
-const entity_storage = @import("entity_storage.zig");
 const ComponentWrapper = entity_storage.ComponentWrapper;
 const DynamicScopeOptions = entity_storage.DynamicScopeOptions;
-const ExportLua = component_mod.ExportLua;
-const LuaSystem = @import("lua_system.zig");
-const PtrTuple = @import("utils.zig").PtrTuple;
+const ExportLua = lua_interop.export_component.ExportLua;
+const PtrTuple = utils.PtrTuple;
 const QueryIter = @import("query.zig").QueryIter;
 const Resource = @import("resource.zig").Resource;
 const runtime = ecs.runtime;
@@ -28,13 +36,6 @@ const GameActions = runtime.game_actions;
 const LuaRuntime = runtime.lua_runtime;
 const commands = runtime.commands;
 const commands_system = runtime.commands_system;
-const Scene = @import("scene.zig").Scene;
-const System = @import("system.zig").System;
-const utils = @import("utils.zig");
-const VTableStorage = @import("comp_vtable_storage.zig");
-const Schedule = @import("schedule.zig");
-const core = @import("core/core.zig");
-const raylib = @import("raylib/raylib.zig");
 
 pub const BuildOptions = struct {
     generate_lua_stub_files: bool = false,
@@ -407,11 +408,6 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.win
     }
 }
 
-pub fn registerDefaultComponentsForBuild(generator: *DeclarationGenerator) !void {
-    try generator.registerComponentForBuild(GameActions);
-    try generator.registerComponentForBuild(EntityId);
-}
-
 fn applyGameActions(game: *Game) void {
     var actions = game.getResource(GameActions);
     if (actions.get().should_close) {
@@ -584,7 +580,7 @@ pub const DynamicQuery = struct {
     }
 
     pub fn registerMetaTable(lstate: lua.State) void {
-        const state: *clua.lua_State = @ptrCast(lstate.state);
+        const state: *clua.lua_State = lstate.state;
         if (clua.luaL_newmetatable(state, MetaTableName) != 1) {
             @panic("Could not create metatable");
         }

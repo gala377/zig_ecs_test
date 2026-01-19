@@ -1,13 +1,13 @@
 const std = @import("std");
 
 const lua = @import("lua_lib");
-const ecs = @import("root.zig");
+const ecs = @import("../root.zig");
 const clua = lua.clib;
 
-const Component = @import("component.zig").Component;
-const Query = @import("game.zig").Query;
-const Without = @import("game.zig").Without;
-const Resource = @import("resource.zig").Resource;
+const Component = ecs.Component;
+const Query = ecs.Query;
+const Without = ecs.game.Without;
+const Resource = ecs.Resource;
 const LuaRuntime = ecs.runtime.lua_runtime;
 const Commands = ecs.Commands;
 const EntityId = ecs.EntityId;
@@ -99,7 +99,7 @@ const ScriptCommand = union(enum) {
     print: []const u8,
 };
 
-fn zig_yield(L: ?*clua.lua_State) callconv(.c) i32 {
+fn zig_yield(L: ?*lua.CLuaState) callconv(.c) i32 {
     if (clua.lua_gettop(L) != 1) {
         @panic("Expected at least one argument which is a string");
     }
@@ -107,10 +107,12 @@ fn zig_yield(L: ?*clua.lua_State) callconv(.c) i32 {
     const argument = clua.lua_tolstring(L, -1, @ptrCast(&strlen));
     const upvalue_idx = clua.lua_upvalueindex(1);
     clua.lua_pushvalue(L, upvalue_idx);
-    if (!clua.lua_islightuserdata(L, upvalue_idx)) {
-        @panic("Not userdata");
-    }
-    const allocator: *std.mem.Allocator = @ptrCast(@alignCast(clua.lua_touserdata(L, upvalue_idx) orelse @panic("not userdata")));
+    const allocator: *std.mem.Allocator = @ptrCast(@alignCast(clua.lua_touserdata(
+        L,
+        upvalue_idx,
+    ) orelse {
+        @panic("not userdata");
+    }));
     const msg = allocator.dupe(u8, argument[0..strlen]) catch @panic("could not allocate string");
     const cmd = allocator.create(ScriptCommand) catch @panic("could not allocate command");
     cmd.* = ScriptCommand{
@@ -128,17 +130,16 @@ pub fn runInitScripts(
 ) void {
     // TODO: Those functions should be set in in a different setup system
     // or in the plugin or something.
-    const state = runtime.get().lua.state;
-    const lstate = @as(*clua.lua_State, @ptrCast(state));
+    const lua_runtime = runtime.get().*;
     const alloc = &allocator.get().allocator;
 
     // TODO: We can also technically, instead of pushing just allocator
     // also push *ScriptCommand as this will make it so that
     // we don't have to allocate this in every zig funtion just to return
     // it, we can just pass this pointer around and zig functions will overwrite it
-    clua.lua_pushlightuserdata(lstate, @ptrCast(alloc));
-    clua.lua_pushcclosure(lstate, zig_yield, 1);
-    clua.lua_setglobal(lstate, "zig_yield");
+    lua_runtime.lua.pushLightUserData(@ptrCast(alloc));
+    lua_runtime.lua.pushClosure(1, &zig_yield);
+    lua_runtime.lua.setGlobalFromTop("zig_yield");
     const cmd: *ecs.commands = commands.get();
 
     while (scripts.next()) |components| {
@@ -166,16 +167,15 @@ pub fn runUpdateScripts(
     // TODO: Those functions should be set in in a different setup system
     // or in the plugin or something.
     const state = runtime.get().lua.state;
-    const lstate = @as(*clua.lua_State, @ptrCast(state));
     const alloc = &allocator.get().allocator;
 
     // TODO: We can also technically, instead of pushing just allocator
     // also push *ScriptCommand as this will make it so that
     // we don't have to allocate this in every zig funtion just to return
     // it, we can just pass this pointer around and zig functions will overwrite it
-    clua.lua_pushlightuserdata(lstate, @ptrCast(alloc));
-    clua.lua_pushcclosure(lstate, zig_yield, 1);
-    clua.lua_setglobal(lstate, "zig_yield");
+    clua.lua_pushlightuserdata(state, @ptrCast(alloc));
+    clua.lua_pushcclosure(state, zig_yield, 1);
+    clua.lua_setglobal(state, "zig_yield");
 
     while (scripts.next()) |components| {
         const script, _ = components;

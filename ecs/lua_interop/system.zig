@@ -1,13 +1,14 @@
 //! This file describes a wrapper around a system defined in lua
 
-const ComponentId = @import("component.zig").ComponentId;
-const lua = @import("lua_lib");
-const Game = @import("game.zig").Game;
-const DynamicScope = @import("game.zig").JoinedDynamicScope;
-const DynamicQuery = @import("game.zig").DynamicQuery;
-const System = @import("system.zig").System;
-
 const std = @import("std");
+const lua = @import("lua_lib");
+const ecs = @import("../root.zig");
+
+const ComponentId = ecs.component.ComponentId;
+const Game = ecs.Game;
+const DynamicScope = ecs.game.JoinedDynamicScope;
+const DynamicQuery = ecs.game.DynamicQuery;
+const System = ecs.system_mod.System;
 
 const Self = @This();
 

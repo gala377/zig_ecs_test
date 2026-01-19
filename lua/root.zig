@@ -2,13 +2,9 @@ pub const state = @import("state.zig");
 pub const Value = @import("value.zig").Value;
 pub const Pair = @import("value.zig").Pair;
 pub const Ref = @import("ref.zig").Ref;
-pub const State = @import("state.zig").LuaState;
-pub const clib = @cImport({
-    @cInclude("lua.h");
-    @cInclude("lualib.h");
-    @cInclude("lauxlib.h");
-});
-pub const CLUA_T = clib.lua_State;
+pub const State = state.LuaState;
+pub const clib = state.lua;
+pub const CLuaState = clib.lua_State;
 
 const std = @import("std");
 
