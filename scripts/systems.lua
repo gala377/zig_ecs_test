@@ -22,6 +22,7 @@ local function click_run(buttons, foos, _)
 			local foo = query.assertSingle(foos)
 			local bar = foo.bar
 			print("foo info " .. tostring(bar.x) .. ", " .. tostring(bar.y))
+			print("calling foo methods " .. tostring(foo:getX()) .. " " .. tostring(foo:getY()))
 			bar.x = bar.x + 1
 		end
 	end

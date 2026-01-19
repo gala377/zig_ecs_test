@@ -43,7 +43,7 @@ pub fn SliceProxy(comptime Slice: type) type {
                 @panic("expected array index to be integer");
             }
             const lua_index = clua.lua_tointegerx(state, 2, null);
-            const value = luaReadValue(state, Element, 3, self.allocator) catch |err| {
+            const value = fromLua(Element, state, 3, self.allocator) catch |err| {
                 std.debug.panic("Could not read lua value {}", .{err});
             };
             const index = lua_index - 1;
@@ -122,7 +122,7 @@ pub fn SliceProxy(comptime Slice: type) type {
     };
 }
 
-pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
+pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: []const std.meta.FieldEnum(T)) type {
     return struct {
         pub const MetaTableName = @TypeOf(T.component_info).comp_name ++ "_MetaTable";
 
@@ -136,11 +136,14 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             break :blk std.StaticStringMap(usize).initComptime(kvs);
         };
 
+        const methods = createLuaReg(T, &.{});
+
         /// Check if given field is in `ingored_fields`.
         /// Check happens at compile time.
-        fn isIgnoredField(comptime field: []const u8) bool {
+        fn isIgnoredField(comptime field_index: usize) bool {
             inline for (ignore_fields) |ignored| {
-                if (std.mem.eql(u8, field, ignored[0..])) {
+                const case_index = @intFromEnum(ignored);
+                if (case_index == field_index) {
                     return true;
                 }
             }
@@ -155,7 +158,6 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         /// That means that any changes to this component in lua will be reflected
         /// and visible in zig.
         pub fn luaPush(self: *T, state: *clua.lua_State, allocator: std.mem.Allocator) void {
-            // std.debug.print("Pushing value of t={s}\n", .{@typeName(T)});
             const allocated = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(T))) orelse @panic("lua could not allocate");
             const udata = @as(*utils.ZigPointer(T), @ptrCast(@alignCast(allocated)));
             udata.* = utils.ZigPointer(T){ .ptr = self, .allocator = allocator };
@@ -163,9 +165,8 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                 @panic("Metatable " ++ MetaTableName ++ "not found");
             }
             // Assign the metatable to the userdata (stack: userdata, metatable)
-            if (clua.lua_setmetatable(state, -2) != 0) {
-                // @panic("object " ++ @typeName(T) ++ " already had a metatable");
-            }
+            // value ignored, always returns 1.
+            _ = clua.lua_setmetatable(state, -2);
         }
 
         /// Creates a component wrapper from lua table
@@ -181,10 +182,10 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                 @compileError("component has to be a struct");
             }
             const fields: []const std.builtin.Type.StructField = std.meta.fields(T);
-            inline for (fields) |f| {
-                if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
+            inline for (fields, 0..) |f, fidx| {
+                if (comptime isLuaSupported(f.type) and !isIgnoredField(fidx)) {
                     _ = clua.lua_getfield(state, tableIndex, @ptrCast(f.name));
-                    const value = try luaReadValue(state, f.type, -1, storage.allocator);
+                    const value = try fromLua(f.type, state, -1, storage.allocator);
                     @field(comp, f.name) = value;
                 } else {
                     if (comptime std.mem.eql(u8, f.name, "allocator")) {
@@ -199,8 +200,6 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         }
 
         /// Called from lua when reading a field
-        ///
-        /// TODO: we should also use it to handle methods. Would be nice.
         pub fn luaIndex(state: *clua.lua_State) callconv(.c) c_int {
             const fields = std.meta.fields(T);
             const udata: *utils.ZigPointer(T) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
@@ -218,25 +217,26 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                 switch (lookup_index) {
                     inline 0...fields.len - 1 => |field_index| {
                         const f = fields[field_index];
-                        if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
-                            luaPushValue(
-                                f.type,
-                                state,
-                                &@field(ptr, f.name),
-                                allocator,
-                            ) catch {
-                                unreachable;
-                            };
-                            return 1;
-                        } else {
-                            std.debug.panic("trying to read field {s} which is not supported from lua", .{f.name});
+                        if (comptime isIgnoredField(field_index) or !isLuaSupported(f.type)) {
+                            _ = clua.luaL_error(state, "cannot read field %s", f.name.ptr);
+                            return 0;
                         }
+                        luaPushValue(
+                            f.type,
+                            state,
+                            &@field(ptr, f.name),
+                            allocator,
+                        ) catch {
+                            unreachable;
+                        };
+                        return 1;
                     },
                     else => @panic("not possible"),
                 }
             }
-            // did not found the field, we return nothing
-            return 0;
+            clua.lua_pushvalue(state, 2); // push key
+            _ = clua.lua_gettable(state, clua.lua_upvalueindex(1)); // lookup in methods table
+            return 1; // return whatever was found (nil if not found)
         }
 
         /// Called from lua when setting a field.
@@ -257,6 +257,10 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                 switch (lookup_index) {
                     inline 0...fields.len - 1 => |field_index| {
                         const f = fields[field_index];
+                        if (comptime isIgnoredField(field_index) or !isLuaSupported(f.type)) {
+                            _ = clua.luaL_error(state, "cannot write field %s", f.name.ptr);
+                            return 0;
+                        }
                         freeRecursive(
                             f.type,
                             &@field(ptr, f.name),
@@ -298,8 +302,10 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
             if (clua.luaL_newmetatable(state, MetaTableName) != 1) {
                 @panic("Could not create metatable");
             }
+            clua.lua_newtable(state);
+            clua.luaL_setfuncs(state, &methods[0], 0);
 
-            clua.lua_pushcclosure(state, @ptrCast(&luaIndex), 0);
+            clua.lua_pushcclosure(state, @ptrCast(&luaIndex), 1);
             clua.lua_setfield(state, -2, "__index");
 
             clua.lua_pushcclosure(state, @ptrCast(&luaNewIndex), 0);
@@ -430,7 +436,7 @@ fn freeRecursive(comptime T: type, val: *const T, allocator: std.mem.Allocator) 
 /// Generates code that is used to interoperate with Lua.
 ///
 /// Ignore fields has to be a tuple of strings
-pub fn ExportLua(comptime T: type, comptime ignore_fields: anytype) ExportLuaInfo(T, ignore_fields) {
+pub fn ExportLua(comptime T: type, comptime ignore_fields: []const std.meta.FieldEnum(T)) ExportLuaInfo(T, ignore_fields) {
     return .{};
 }
 
@@ -594,97 +600,6 @@ fn fromLua(comptime T: type, state: *clua.lua_State, index: c_int, allocator: st
     }
 }
 
-/// Deserializes value from lua to the type of `field_type`.
-///
-/// Intended to be used when deserializing values to set to fields.
-fn luaReadValue(state: *clua.lua_State, comptime field_type: type, index: c_int, allocator: std.mem.Allocator) !field_type {
-    const info = @typeInfo(field_type);
-    switch (info) {
-        .bool => {
-            if (clua.lua_type(state, index) != clua.LUA_TBOOLEAN) {
-                return error.expectedBoolean;
-            }
-            const value = clua.lua_toboolean(state, index);
-            return value == 1;
-        },
-        .int => {
-            if (clua.lua_type(state, index) != clua.LUA_TNUMBER) {
-                return error.expectedInteger;
-            }
-            const value = clua.lua_tointegerx(state, index, null);
-            return @intCast(value);
-        },
-        .float => {
-            if (clua.lua_type(state, index) != clua.LUA_TNUMBER) {
-                return error.expectedNumber;
-            }
-            const value = clua.lua_tonumberx(state, index, null);
-            return @floatCast(value);
-        },
-        .optional => |opt| {
-            if (clua.lua_isnil(state, index)) {
-                return null;
-            }
-            return try luaReadValue(state, opt.child, index, allocator);
-        },
-        .pointer => |ptr| if (ptr.size == .slice) {
-            if (ptr.child == u8 and ptr.sentinel_ptr == null) {
-                // its a string, thats a problem we need to do allocation
-                if (clua.lua_type(state, index) != clua.LUA_TSTRING) {
-                    return error.expectedString;
-                }
-                var size: usize = undefined;
-                const lstr = clua.lua_tolstring(state, index, &size);
-                const str = try allocator.dupe(u8, lstr[0..size]);
-                return @ptrCast(str);
-            } else if (ptr.child == u8) {
-                // its a string, thats a problem we need to do allocation
-                if (clua.lua_type(state, index) != clua.LUA_TSTRING) {
-                    return error.expectedString;
-                }
-                var size: usize = undefined;
-                const lstr = clua.lua_tolstring(state, index, &size);
-                const str = try allocator.dupeZ(u8, lstr[0..size :0]);
-                return @ptrCast(str);
-            }
-            // now array
-            if (clua.lua_type(state, index) != clua.LUA_TTABLE) {
-                return error.expectedTable;
-            }
-            const len = clua.lua_rawlen(state, index);
-            const res = try allocator.alloc(ptr.child, len);
-            for (0..len) |idx| {
-                _ = clua.lua_geti(state, index, @intCast(idx + 1));
-                const value = try luaReadValue(state, ptr.child, -1, allocator);
-                res[idx] = value;
-            }
-            return res;
-        } else if (ptr.size == .c and ptr.child == u8) {
-            return error.cStringsUnsupported;
-            // its a string thats a problem, we need to do allocation
-        } else if (ptr.size == .one) {
-            const value = try luaReadValue(state, ptr.child, index, allocator);
-            const obj: *ptr.child = try allocator.create(ptr.child);
-            obj.* = value;
-            return obj;
-        } else {
-            return error.unsupportedType;
-        },
-        .@"struct" => if (isLuaSupported(field_type)) {
-            // TODO: allow setting this field from lua
-            // we need to check if tehis field is userdata. If so just assing pointer
-            // or if it is table we need something like FromLua method for components
-            return error.unsupportedType;
-        } else {
-            return error.unsupportedType;
-        },
-        else => {
-            // std.debug.print("unsupported type {s} for field", .{@tagName(tag)});
-            return error.unsupportedType;
-        },
-    }
-}
-
 /// Check if type can be read from lua
 fn isLuaSupported(comptime t: type) bool {
     return switch (@typeInfo(t)) {
@@ -753,4 +668,110 @@ fn luaPushValue(T: type, state: *clua.lua_State, val: *T, allocator: std.mem.All
             return error.unsupportedType;
         },
     }
+}
+
+const LuaMethod = *const fn (*lua.CLuaState) callconv(.c) c_int;
+
+fn wrapMethod(comptime T: type, name: []const u8) LuaMethod {
+    const DeclType = @TypeOf(@field(T, name));
+    const declaration = @typeInfo(DeclType);
+    if (comptime declaration != .@"fn") {
+        @compileError("we try to export a method but this is not a function " ++ name);
+    }
+    const as_func = declaration.@"fn";
+    if (comptime as_func.is_generic) {
+        @compileError("we cannot export generic functions");
+    }
+    const params = as_func.params;
+    const self_type = params[0].type.?;
+    if (comptime self_type != *T) {
+        @compileError("only *Self declarations can be exported " ++ @typeName(self_type));
+    }
+    return &struct {
+        fn wrapped(state: *lua.CLuaState) callconv(.c) c_int {
+            const udata: *utils.ZigPointer(T) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
+            const ptr: *T = @ptrCast(@alignCast(udata.ptr));
+            const allocator = udata.allocator;
+            var call_params: std.meta.ArgsTuple(DeclType) = undefined;
+            call_params[0] = ptr;
+            inline for (params[1..], 1..) |param, index| {
+                if (comptime param.type.? == std.mem.Allocator) {
+                    // handle allocator dependency
+                    call_params[index] = allocator;
+                } else {
+                    call_params[index] = fromLua(
+                        param.type.?,
+                        state,
+                        @intCast(index + 1),
+                        allocator,
+                    ) catch {
+                        _ = clua.luaL_error(state, "Invalid argument %d for method %s", index, name.ptr);
+                        return 0;
+                    };
+                }
+            }
+            var result = @call(.auto, @field(T, name), call_params);
+            if (comptime as_func.return_type == void) {
+                return 0;
+            } else {
+                luaPushValue(@TypeOf(result), state, &result, allocator) catch {
+                    _ = clua.luaL_error(state, "Could not push return value of method %s", name.ptr);
+                    return 0;
+                };
+                return 1;
+            }
+        }
+    }.wrapped;
+}
+
+fn isIgnoredDecl(comptime T: type, comptime decl_id: usize, comptime ignored_decls: []std.meta.DeclEnum(T)) bool {
+    inline for (ignored_decls) |decl| {
+        const id = @intFromEnum(decl);
+        if (id == decl_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn isMethod(comptime T: type, comptime name: []const u8) bool {
+    const DeclType = @TypeOf(@field(T, name));
+    if (@typeInfo(DeclType) != .@"fn") {
+        return false;
+    }
+    const as_func = @typeInfo(DeclType).@"fn";
+    const params = as_func.params;
+    if (params.len == 0) {
+        return false;
+    }
+    const self_type = params[0].type.?;
+    if (comptime self_type != *T and self_type != *const T) {
+        return false;
+    }
+    return true;
+}
+
+fn createLuaReg(comptime T: type, comptime ignored_decls: []std.meta.DeclEnum(T)) []const clua.luaL_Reg {
+    const ret = comptime brk: {
+        const declarations = std.meta.declarations(T);
+        var exported_decls_count = 0;
+        for (declarations, 0..) |decl, index| {
+            if (isMethod(T, decl.name) and !isIgnoredDecl(T, index, ignored_decls)) {
+                exported_decls_count = exported_decls_count + 1;
+            }
+        }
+        var methods: [exported_decls_count + 1]clua.luaL_Reg = undefined;
+        var method_index = 0;
+        for (declarations, 0..) |decl, index| {
+            if (!isMethod(T, decl.name) or isIgnoredDecl(T, index, ignored_decls)) {
+                continue;
+            }
+            const wrapped = wrapMethod(T, decl.name);
+            methods[method_index] = .{ .name = decl.name.ptr, .func = @ptrCast(wrapped) };
+            method_index = method_index + 1;
+        }
+        methods[method_index] = .{ .name = null, .func = null };
+        break :brk methods;
+    };
+    return &ret;
 }

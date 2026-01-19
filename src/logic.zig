@@ -297,13 +297,13 @@ pub const ButtonSpawn = struct {
 
 pub const ButtonOpen = struct {
     pub const component_info = Component(ButtonOpen);
-    pub const lua_info = ExportLua(ButtonOpen, .{});
+    pub const lua_info = ExportLua(ButtonOpen, &.{});
     marker: Marker = .empty,
 };
 
 pub const ButtonClose = struct {
     pub const component_info = Component(ButtonClose);
-    pub const lua_info = ExportLua(ButtonClose, .{});
+    pub const lua_info = ExportLua(ButtonClose, &.{});
     marker: Marker = .empty,
 };
 
@@ -384,9 +384,17 @@ pub const RunOnce = struct {
 
 pub const Foo = struct {
     pub const component_info = Component(Foo);
-    pub const lua_info = ExportLua(Foo, .{});
+    pub const lua_info = ExportLua(Foo, &.{});
 
     bar: *Bar,
+
+    pub fn getX(self: *Foo) isize {
+        return self.bar.x;
+    }
+
+    pub fn getY(self: *Foo) isize {
+        return self.bar.y;
+    }
 
     pub fn deinit(self: *Foo, allocator: std.mem.Allocator) void {
         allocator.destroy(self.bar);
@@ -395,7 +403,7 @@ pub const Foo = struct {
 
 pub const Bar = struct {
     pub const component_info = Component(Bar);
-    pub const lua_info = ExportLua(Bar, .{});
+    pub const lua_info = ExportLua(Bar, &.{});
 
     x: isize,
     y: isize,

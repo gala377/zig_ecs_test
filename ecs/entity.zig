@@ -11,7 +11,7 @@ const ExportLua = @import("lua_interop/root.zig").export_component.ExportLua;
 
 pub const EntityId = struct {
     pub const component_info = component.LibComponent(component_prefix, EntityId);
-    pub const lua_info = ExportLua(EntityId, .{});
+    pub const lua_info = ExportLua(EntityId, &.{});
     scene_id: usize,
     entity_id: usize,
 };
