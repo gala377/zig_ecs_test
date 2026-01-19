@@ -19,7 +19,7 @@ local function click_run(buttons, foos, _)
 		if button.clicked then
 			print("Button clicked from lua")
 			print("got at position " .. tostring(button.pos.x) .. ", " .. tostring(button.pos.y))
-			local foo = query.single(foos)
+			local foo = query.assertSingle(foos)
 			local bar = foo.bar
 			print("foo info " .. tostring(bar.x) .. ", " .. tostring(bar.y))
 			bar.x = bar.x + 1
@@ -29,8 +29,8 @@ end
 
 local called = 1
 local function change_title(buttons)
-	local button, _ = query.single(buttons)
-	if button ~= nil and button.clicked then
+	local button, _ = query.assertSingle(buttons)
+	if button.clicked then
 		called = called + 1
 	end
 end
