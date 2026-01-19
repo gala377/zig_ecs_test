@@ -126,6 +126,16 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
     return struct {
         pub const MetaTableName = @TypeOf(T.component_info).comp_name ++ "_MetaTable";
 
+        const field_map = blk: {
+            const fields = std.meta.fields(T);
+            // We create an array of tuples { field_name, field_index }
+            var kvs: [fields.len]struct { []const u8, usize } = undefined;
+            for (fields, 0..) |f, i| {
+                kvs[i] = .{ f.name, i };
+            }
+            break :blk std.StaticStringMap(usize).initComptime(kvs);
+        };
+
         /// Check if given field is in `ingored_fields`.
         /// Check happens at compile time.
         fn isIgnoredField(comptime field: []const u8) bool {
@@ -192,55 +202,61 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
         ///
         /// TODO: we should also use it to handle methods. Would be nice.
         pub fn luaIndex(state: *clua.lua_State) callconv(.c) c_int {
-            if (comptime @typeInfo(T) != .@"struct") {
-                @compileError("component has to be a struct");
-            }
             const fields = std.meta.fields(T);
             const udata: *utils.ZigPointer(T) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
             const ptr: *T = @ptrCast(@alignCast(udata.ptr));
-            const luaField = clua.lua_tolstring(state, 2, null);
+            var str_len: usize = 0;
+            const from_lua_field_name = clua.lua_tolstring(state, 2, &str_len);
+            const lua_field_name = from_lua_field_name[0..str_len];
+
             const allocator: std.mem.Allocator = if (comptime @hasField(T, "allocator"))
                 ptr.allocator
             else
                 udata.allocator;
-            inline for (fields) |f| {
-                const asSlice = std.mem.sliceTo(luaField, 0);
-                // only push fields that support lua proxing
-                if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
-                    if (std.mem.eql(u8, f.name, asSlice)) {
-                        luaPushValue(
-                            f.type,
-                            state,
-                            &@field(ptr, f.name),
-                            allocator,
-                        ) catch {
-                            unreachable;
-                        };
-                    }
+            // fields take priority
+            if (field_map.get(lua_field_name)) |lookup_index| {
+                switch (lookup_index) {
+                    inline 0...fields.len - 1 => |field_index| {
+                        const f = fields[field_index];
+                        if (comptime isLuaSupported(f.type) and !isIgnoredField(f.name)) {
+                            luaPushValue(
+                                f.type,
+                                state,
+                                &@field(ptr, f.name),
+                                allocator,
+                            ) catch {
+                                unreachable;
+                            };
+                            return 1;
+                        } else {
+                            std.debug.panic("trying to read field {s} which is not supported from lua", .{f.name});
+                        }
+                    },
+                    else => @panic("not possible"),
                 }
             }
-            return 1;
+            // did not found the field, we return nothing
+            return 0;
         }
 
         /// Called from lua when setting a field.
         pub fn luaNewIndex(state: *clua.lua_State) callconv(.c) c_int {
-            if (comptime @typeInfo(T) != .@"struct") {
-                @compileError("component has to be a struct");
-            }
             const fields = std.meta.fields(T);
             const udata: *utils.ZigPointer(T) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
             const ptr: *T = @ptrCast(@alignCast(udata.ptr));
-            const luaField = clua.lua_tolstring(state, 2, null);
-            const asSlice = std.mem.sliceTo(luaField, 0);
+            var str_len: usize = 0;
+            const from_lua_string = clua.lua_tolstring(state, 2, &str_len);
+            const lua_field = from_lua_string[0..str_len];
 
             // use type allocator if possible if not use generic one
             const allocator = if (comptime @hasField(T, "allocator"))
                 ptr.allocator
             else
                 udata.allocator;
-            inline for (fields) |f| {
-                if (!isIgnoredField(f.name)) {
-                    if (std.mem.eql(u8, f.name, asSlice)) {
+            if (field_map.get(lua_field)) |lookup_index| {
+                switch (lookup_index) {
+                    inline 0...fields.len - 1 => |field_index| {
+                        const f = fields[field_index];
                         freeRecursive(
                             f.type,
                             &@field(ptr, f.name),
@@ -261,7 +277,9 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: anytype) type {
                         ) catch {
                             @panic("could not read value from lua");
                         };
-                    }
+                        return 0;
+                    },
+                    else => @panic("not possible"),
                 }
             }
             return 0;
