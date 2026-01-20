@@ -2,7 +2,7 @@ const ComponentId = @import("component.zig").ComponentId;
 const Entity = @import("entity.zig");
 const utils = @import("utils.zig");
 const PtrTuple = utils.PtrTuple;
-const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
+const ComponentWrapper = @import("component.zig").ComponentWrapper;
 const Archetype = @import("entity_storage.zig").Archetype;
 
 pub fn QueryIter(comptime Components: anytype) type {

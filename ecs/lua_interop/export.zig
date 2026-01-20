@@ -4,8 +4,16 @@ const lua = @import("lua_lib");
 const clua = lua.clib;
 
 const utils = @import("../utils.zig");
+const component = @import("../component.zig");
 const entity_storage = @import("../entity_storage.zig");
-const ComponentWrapper = entity_storage.ComponentWrapper;
+const ComponentWrapper = component.ComponentWrapper;
+
+pub fn ExportOptions(comptime T: type) type {
+    return struct {
+        name_prefix: []const u8 = &.{},
+        ignored_fields: []const std.meta.FieldEnum(T) = &.{},
+    };
+}
 
 pub fn SliceProxy(comptime Slice: type) type {
     const info = @typeInfo(Slice);
@@ -122,9 +130,15 @@ pub fn SliceProxy(comptime Slice: type) type {
     };
 }
 
-pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: []const std.meta.FieldEnum(T)) type {
+pub fn ExportLuaInfo(comptime T: type, comptime export_options: ExportOptions(T)) type {
     return struct {
-        pub const MetaTableName = @TypeOf(T.component_info).comp_name ++ "_MetaTable";
+        pub const MetaTableName = brk: {
+            const prefix = if (export_options.name_prefix.len == 0)
+                @typeName(T)
+            else
+                export_options.name_prefix ++ "." ++ @typeName(T);
+            break :brk prefix ++ "_MetaTable";
+        };
 
         const field_map = blk: {
             const fields = std.meta.fields(T);
@@ -141,7 +155,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: []const std.meta.
         /// Check if given field is in `ingored_fields`.
         /// Check happens at compile time.
         fn isIgnoredField(comptime field_index: usize) bool {
-            inline for (ignore_fields) |ignored| {
+            inline for (export_options.ignored_fields) |ignored| {
                 const case_index = @intFromEnum(ignored);
                 if (case_index == field_index) {
                     return true;
@@ -195,7 +209,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime ignore_fields: []const std.meta.
                     }
                 }
             }
-            const wrapper = try storage.createWrapper(T, comp);
+            const wrapper = component.wrap(T, comp);
             return wrapper;
         }
 
@@ -436,7 +450,7 @@ fn freeRecursive(comptime T: type, val: *const T, allocator: std.mem.Allocator) 
 /// Generates code that is used to interoperate with Lua.
 ///
 /// Ignore fields has to be a tuple of strings
-pub fn ExportLua(comptime T: type, comptime ignore_fields: []const std.meta.FieldEnum(T)) ExportLuaInfo(T, ignore_fields) {
+pub fn ExportLua(comptime T: type, comptime export_options: ExportOptions(T)) ExportLuaInfo(T, export_options) {
     return .{};
 }
 

@@ -24,6 +24,9 @@ local function click_run(buttons, foos, _)
 			print("foo info " .. tostring(bar.x) .. ", " .. tostring(bar.y))
 			print("calling foo methods " .. tostring(foo:getX()) .. " " .. tostring(foo:getY()))
 			bar.x = bar.x + 1
+			if foo:setBar { x = bar.x + 1, y = bar.y } then
+				print("successfully set bar")
+			end
 		end
 	end
 end

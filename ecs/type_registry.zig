@@ -3,7 +3,7 @@ const std = @import("std");
 const lua = @import("lua_lib");
 const clua = lua.clib;
 
-const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
+const ComponentWrapper = @import("component.zig").ComponentWrapper;
 const entity_storage = @import("entity_storage.zig");
 const utils = @import("utils.zig");
 

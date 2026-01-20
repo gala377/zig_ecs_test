@@ -2,7 +2,7 @@ const Query = @import("../entity_storage.zig").QueryIter;
 const Resource = @import("../resource.zig").Resource;
 const commands = @import("commands.zig");
 const Game = @import("../game.zig").Game;
-const ComponentWrapper = @import("../entity_storage.zig").ComponentWrapper;
+const ComponentWrapper = @import("../component.zig").ComponentWrapper;
 const std = @import("std");
 
 pub fn create_entities(commands_res: commands.Commands) void {

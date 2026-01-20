@@ -9,7 +9,10 @@ const ExportLua = @import("../lua_interop/export.zig").ExportLua;
 
 pub const Button = struct {
     pub const component_info = Component(component_prefix, Button);
-    pub const lua_info = ExportLua(Button, &.{.title});
+    pub const lua_info = ExportLua(Button, .{
+        .name_prefix = component_prefix,
+        .ignored_fields = &.{.title},
+    });
 
     pos: Vec2 = .{ .x = 0.0, .y = 0.0 },
     size: Vec2 = .{ .x = 0.0, .y = 0.0 },

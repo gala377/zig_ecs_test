@@ -1,4 +1,4 @@
-const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
+const ComponentWrapper = @import("component.zig").ComponentWrapper;
 const std = @import("std");
 
 allocator: std.mem.Allocator,

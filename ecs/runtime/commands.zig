@@ -5,9 +5,10 @@ const component = @import("../component.zig");
 const entity = @import("../entity.zig");
 const entity_storage = @import("../entity_storage.zig");
 const scene = @import("../scene.zig");
+const utils = @import("../utils.zig");
 
 const ComponentId = component.ComponentId;
-const ComponentWrapper = entity_storage.ComponentWrapper;
+const ComponentWrapper = component.ComponentWrapper;
 const EntityId = entity.EntityId;
 const Game = @import("../game.zig").Game;
 const Resource = @import("../resource.zig").Resource;
@@ -62,10 +63,7 @@ pub fn addComponents(self: *Self, entity_id: EntityId, components: anytype) !voi
     inline for (components, 0..) |comp, index| {
         const boxed = try self.allocator.create(@TypeOf(comp));
         boxed.* = comp;
-        componentsStorage[index] = .{
-            .pointer = @ptrCast(@alignCast(boxed)),
-            .vtable = try self.game.global_entity_storage.createVTable(@TypeOf(comp)),
-        };
+        componentsStorage[index] = component.wrap(@TypeOf(comp), boxed);
     }
     try self.registerComponentsToAdd(entity_id, &componentsStorage);
 }
@@ -95,17 +93,11 @@ fn addEntity(self: *Self, id: EntityId, components: anytype) !void {
     var componentsStorage: [infoStruct.fields.len + 1]ComponentWrapper = undefined;
     const boxed_id = try self.allocator.create(EntityId);
     boxed_id.* = id;
-    componentsStorage[0] = ComponentWrapper{
-        .pointer = @ptrCast(@alignCast(boxed_id)),
-        .vtable = try self.game.global_entity_storage.createVTable(EntityId),
-    };
+    componentsStorage[0] = component.wrap(EntityId, boxed_id);
     inline for (components, 1..) |comp, index| {
         const boxed = try self.allocator.create(@TypeOf(comp));
         boxed.* = comp;
-        componentsStorage[index] = ComponentWrapper{
-            .pointer = @ptrCast(@alignCast(boxed)),
-            .vtable = try self.game.global_entity_storage.createVTable(@TypeOf(comp)),
-        };
+        componentsStorage[index] = component.wrap(@TypeOf(comp), boxed);
     }
     try self.addEntityWrapped(id, &componentsStorage);
 }

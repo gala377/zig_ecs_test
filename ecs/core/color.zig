@@ -9,7 +9,9 @@ const ExportLua = ecs.lua.export_component.ExportLua;
 const Self = @This();
 
 pub const component_info = Component(component_prefix, Self);
-pub const lua_info = ExportLua(Self, &.{});
+pub const lua_info = ExportLua(Self, .{
+    .name_prefix = component_prefix,
+});
 
 r: u8,
 g: u8,

@@ -25,6 +25,7 @@
 - system conditions
   - something like `system(func).run_if(cond)`
 
+- thread local resources [[#Thread local resources]]
 - creating components/entities in lua [[#Exposing constructors to lua]]
 - exposing Commands to lua [[#Exposing constructors to lua]]
 - Lua defined components - this one is hard and not sure how to do this yet.
@@ -33,6 +34,32 @@
   just be pushing the ref.
 - exposing events in lua
 - exposing methods to lua
+
+### Thread local resources
+
+Some resources could be marked as thread local.
+Thread local resources can be safely requested by systems
+running on different threads. Great use case for this would be
+`Commands`. As multiple threads would be use commands at the same time.
+(The problem is that commands uses `createvTable` which is not thread safe
+but we can always defer creation of component wrapper to later. This is possible
+function like makeWrapperFactory(T) returning fn(*entity_storage) ComponentWrapper.
+The function could even be part of a ComponentInfo)
+
+The idea is simple. We create a resource that is a hashmap of 
+[ThreadId] -> ActualResource.
+
+Whenever system requests ThreadLocalResource(ActualResource)
+we look into this map to retrieve the pointer to the resource.
+
+At the end. The current commands system instead of requesting just Commands
+will request something like ThreadStore(ActualResource) which will
+allow it to access the map.
+
+This is a great use case for map -> reduce workflow.
+
+We use thread local resources as a way to split data.
+And then use one reducer system that grabs it all together.
 
 ### Lockless multithreading
 
@@ -51,21 +78,18 @@ cannot affect each other.
   commands at the same time
 
 - queries are the biggest problem
-  - Creating query uses dynamic type id which is not guarded
-    and will be a high contention point. 
-    
-    One solution would be to preinitialize it with conponent types
-    that are in sets so that lookup does not create new id 
-    meaning it will be always safe to use it.
+  - ~~Creating query uses dynamic type id which is not guarded 
+    and will be a high contention point.~~ 
+    - (Fixed by using only types and statics for type id)
 
-  - iterating over query also uses dynamic id which again might be okay
-    as long as we can make it so that the value is preinitialized.
-
-    **This looks like the biggest problem so far**
+  - ~~iterating over query also uses dynamic id which again might be okay
+    as long as we can make it so that the value is preinitialized.~~
+    - (Fixed by using only types and statics for type id)
 
   - if the cache doesn't have a query in it it will allocate and add
     to cache. Meaning that the cache might need to be guarded 
     as it can lead to data races.
+    - (Cache is now guarded by mutex)
 
 - Id provider and dynamic id are shared and not guarded by mutex.
   But whenever we create a new entity they happen to be used.

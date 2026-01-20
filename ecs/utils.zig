@@ -159,6 +159,11 @@ pub const IdProvider = struct {
     }
 };
 
+// WARNING: not comptime safe
+// meaning that this should not be stored within comptime values
+// as it can lead to weird memory corruption if you think you are
+// returning a comptime pointer but you are actually returning
+// runtime pointer because you have called this.
 pub fn typeId(comptime T: type) usize {
     const id = &struct {
         const _ = T;

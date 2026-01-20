@@ -16,7 +16,10 @@ pub fn EventBuffer(comptime T: type) type {
     return struct {
         const Self = @This();
         pub const component_info = Component(component_prefix, Self);
-        pub const lua_info = ExportLua(Self, &.{.allocator});
+        pub const lua_info = ExportLua(Self, .{
+            .name_prefix = component_prefix,
+            .ignored_fields = &.{.allocator},
+        });
 
         events: []T,
         allocator: std.mem.Allocator,

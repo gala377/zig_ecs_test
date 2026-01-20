@@ -5,13 +5,15 @@ const lua = @import("lua_lib");
 
 const component = @import("component.zig");
 const ComponentId = component.ComponentId;
-const ComponentWrapper = @import("entity_storage.zig").ComponentWrapper;
+const ComponentWrapper = component.ComponentWrapper;
 const utils = @import("utils.zig");
 const ExportLua = @import("lua_interop/root.zig").export_component.ExportLua;
 
 pub const EntityId = struct {
     pub const component_info = component.LibComponent(component_prefix, EntityId);
-    pub const lua_info = ExportLua(EntityId, &.{});
+    pub const lua_info = ExportLua(EntityId, .{
+        .name_prefix = component_prefix,
+    });
     scene_id: usize,
     entity_id: usize,
 };
@@ -38,7 +40,7 @@ pub fn getComponent(self: *Self, comptime T: type) ?*T {
 
 pub fn addComponents(self: *Self, components: []ComponentWrapper) !void {
     for (components) |c| {
-        const old = try self.components.fetchPut(c.vtable.component_id, c);
+        const old = try self.components.fetchPut(c.component_id, c);
         if (old) |prev| {
             std.debug.panic("Replacing already existing componentof type  {s} with {s}", .{ prev.value.vtable.name, c.vtable.name });
         }

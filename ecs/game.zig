@@ -20,12 +20,12 @@ const System = @import("system.zig").System;
 const LuaSystem = lua_interop.system;
 const Component = component_mod.LibComponent;
 const ComponentId = component_mod.ComponentId;
+const ComponentWrapper = component_mod.ComponentWrapper;
 const DynamicQueryIter = dynamic_query.DynamicQueryIter;
 const DynamicQueryScope = dynamic_query.DynamicQueryScope;
 const LuaAccessibleOpaqueComponent = dynamic_query.LuaAccessibleOpaqueComponent;
 const Entity = ecs.entity;
 const EntityId = Entity.EntityId;
-const ComponentWrapper = entity_storage.ComponentWrapper;
 const DynamicScopeOptions = entity_storage.DynamicScopeOptions;
 const ExportLua = lua_interop.export_component.ExportLua;
 const PtrTuple = utils.PtrTuple;
@@ -115,7 +115,7 @@ pub const Game = struct {
             .options = options,
             .inner_id = 1,
             .current_scene = null,
-            .global_entity_storage = try entity_storage.init(allocator, vtable_storage),
+            .global_entity_storage = try entity_storage.init(allocator),
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
             .frame_allocator = .init(std.heap.c_allocator),
@@ -193,7 +193,7 @@ pub const Game = struct {
     }
 
     pub fn newScene(self: *Self) !Scene {
-        return .init(self.newId(), self.idprovider.idprovider(), self.allocator, self.vtable_storage);
+        return .init(self.newId(), self.idprovider.idprovider(), self.allocator);
     }
 
     pub fn dynamicQueryScopeOpts(self: *Self, components: []const ComponentId, exclude: []const ComponentId, options: DynamicScopeOptions) !JoinedDynamicScope {
