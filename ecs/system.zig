@@ -20,6 +20,44 @@ pub const System = struct {
     pub fn deinit(self: *const Self) void {
         self.vtable.deinit(self.context);
     }
+
+    pub fn run_if(self: Self, allocator: std.mem.Allocator, comptime F: anytype) System {
+        const condition = mkFunctionSystemRet(bool, F);
+        const context = allocator.create(ConditionalContext) catch {
+            @panic("could not allocate conditional context");
+        };
+        context.* = .{
+            .inner_system = self,
+            .allocator = allocator,
+        };
+        const run_impl = struct {
+            pub fn run(ptr: ?*anyopaque, game: *Game) void {
+                const ctx: *ConditionalContext = @ptrCast(@alignCast(ptr.?));
+                if (condition(null, game)) {
+                    ctx.inner_system.run(game);
+                }
+            }
+        }.run;
+
+        return .{
+            .context = @ptrCast(@alignCast(context)),
+            .vtable = &.{
+                .run = &run_impl,
+                .deinit = &ConditionalContext.deinit,
+            },
+        };
+    }
+};
+
+const ConditionalContext = struct {
+    inner_system: System,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(ptr: ?*anyopaque) void {
+        const context: *ConditionalContext = @ptrCast(@alignCast(ptr.?));
+        context.inner_system.deinit();
+        context.allocator.destroy(context);
+    }
 };
 
 const ChainContext = struct {
@@ -72,15 +110,18 @@ pub fn system(comptime F: anytype) System {
     };
 }
 
-fn mkFnSystem(comptime F: anytype) fn (?*anyopaque, *Game) void {
+fn mkFunctionSystemRet(comptime Ret: type, comptime F: anytype) fn (?*anyopaque, *Game) Ret {
     const info = @typeInfo(@TypeOf(F));
     if (comptime info != .@"fn") {
         @compileError("Expected a function type");
     }
+    if (comptime Ret != info.@"fn".return_type.?) {
+        @compileError("return type of the function and passed type have to match");
+    }
     const params = info.@"fn".params;
 
     return struct {
-        fn call(context: ?*anyopaque, game: *Game) void {
+        fn call(context: ?*anyopaque, game: *Game) Ret {
             _ = context;
             // Generate compile-time array of query results
             var queries: std.meta.ArgsTuple(@TypeOf(F)) = undefined;
@@ -138,6 +179,10 @@ fn mkFnSystem(comptime F: anytype) fn (?*anyopaque, *Game) void {
             return @call(.auto, F, queries);
         }
     }.call;
+}
+
+fn mkFnSystem(comptime F: anytype) fn (?*anyopaque, *Game) void {
+    return mkFunctionSystemRet(void, F);
 }
 
 const ConcurrentContext = struct {

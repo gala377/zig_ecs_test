@@ -11,6 +11,19 @@
 - WithOut filter 
 - yield-dispatch in lua 
 
+
+## Ongoing work
+
+- type registry 
+  - needed for [[#Exposing constructors to lua]]
+- lua dispatch to zig 
+  - some way to easily expose functions to lua, we have yield-dispatch now we 
+    need to have easy way to add new functions to it
+- lua scripts - being able to add scripts as components easily.
+  - this would require some asset loading. Like loading files. And then once
+    the files are loaded we can access them to (as a handle or something)
+    so that we can create the script using the source.
+
 ## What next
 
 - lockless multithreading of systems
