@@ -26,6 +26,10 @@
 
 ## What next
 
+- accessing components from lua scripts 
+  - something like component/entity handle which we need 
+    to like set before we start executing the scripts so that
+    lua has access to stable pointers
 - lockless multithreading of systems
 - exposing native functions to lua.
   - something that will allow us to define func 
@@ -35,9 +39,6 @@
 
    This is for lua systems and lua scripts.
 
-- system conditions
-  - something like `system(func).run_if(cond)`
-
 - thread local resources [[#Thread local resources]]
 - creating components/entities in lua [[#Exposing constructors to lua]]
 - exposing Commands to lua [[#Exposing constructors to lua]]
@@ -46,7 +47,6 @@
   its type. Its from lua implementation would be just getting the ref and toLua would 
   just be pushing the ref.
 - exposing events in lua
-- exposing methods to lua
 
 ### Thread local resources
 

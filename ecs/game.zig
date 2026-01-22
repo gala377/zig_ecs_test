@@ -49,11 +49,10 @@ pub const Options = struct {
 pub const Sentinel = usize;
 
 const SimpleIdProvider = struct {
-    inner: usize = 0,
+    inner: std.atomic.Value(usize),
 
     fn next(self: *SimpleIdProvider) usize {
-        self.inner += 1;
-        return self.inner;
+        return self.inner.fetchAdd(1, .monotonic);
     }
 
     pub fn idprovider(
@@ -105,7 +104,9 @@ pub const Game = struct {
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
         const state = try lua.State.init(allocator);
         const id_provider = try allocator.create(SimpleIdProvider);
-        id_provider.* = SimpleIdProvider{};
+        id_provider.* = SimpleIdProvider{
+            .inner = .init(1),
+        };
         const vtable_storage = try allocator.create(VTableStorage);
         vtable_storage.* = VTableStorage.init(allocator);
         return .{

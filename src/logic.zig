@@ -33,10 +33,12 @@ pub fn install(game: *Game) !void {
         system(read_new_entities),
         system(remove_last_entity),
         system(read_events),
-        system(setup_circle),
         system(move_player_marker),
         system(spawn_circle),
         system(add_player),
+    });
+    try game.addSystems(.setup, &.{
+        system(setup_circle),
     });
     try game.addSystem(.post_update, finish_run);
 
@@ -179,12 +181,18 @@ pub fn install(game: *Game) !void {
     std.debug.print("adding more systems\n", .{});
     try lua_script.install(game);
     std.debug.print("done... running\n", .{});
-    _ = try game.addSystems(.setup, &.{
+    try game.addSystems(.setup, &.{
         try ecs.chain(game.allocator, &.{
             system(chain1),
             system(chain2),
             system(chain3),
         }),
+    });
+    try game.addSystems(.update, &.{
+        system(spam_me).run_if(
+            game.allocator,
+            test_item_exists,
+        ),
     });
 }
 
@@ -217,6 +225,15 @@ pub fn spawn_on_click(
             .index = next_index,
         }}) catch @panic("could not make new scene entity");
     }
+}
+
+pub fn test_item_exists(q: *Query(.{TestItem})) bool {
+    return q.next() != null;
+}
+
+pub fn spam_me(q: *Query(.{TestItem})) void {
+    _ = q;
+    std.debug.print("spam\n", .{});
 }
 
 const NewCircle = struct {
@@ -420,10 +437,11 @@ pub const PlayerMarker = struct {
     marker: Marker = .empty,
 };
 
-fn setup_circle(cond: Resource(RunOnce), commands: Commands) void {
-    if (cond.get().already_run) {
-        return;
-    }
+fn never_run(cond: Resource(RunOnce)) bool {
+    return !cond.get().already_run;
+}
+
+fn setup_circle(commands: Commands) void {
     _ = commands.get().addSceneEntity(.{
         Circle{ .radius = 50.0 },
         Position{ .x = 1080.0 / 2, .y = 720.0 / 2 },
