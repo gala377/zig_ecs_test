@@ -2,10 +2,7 @@ const std = @import("std");
 const ecs = @import("prelude.zig");
 const lua = @import("lua_lib");
 
-const component_prefix = @import("build_options").components_prefix;
-
 const clua = lua.clib;
-
 const dynamic_query = ecs.dynamic_query;
 const lua_interop = ecs.lua;
 const utils = ecs.utils;
@@ -91,7 +88,6 @@ pub const Game = struct {
     should_close: bool,
     current_scene: ?Scene,
 
-    inner_id: usize,
     idprovider: *SimpleIdProvider,
 
     schedule: Schedule,
@@ -112,7 +108,6 @@ pub const Game = struct {
             .lua_state = state,
             .should_close = false,
             .options = options,
-            .inner_id = 1,
             .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator),
             .idprovider = id_provider,
@@ -226,14 +221,6 @@ pub const Game = struct {
             .scene_scope = scene_scope,
             .allocator = self.allocator,
         };
-    }
-
-    pub fn newScene(self: *Self) !Scene {
-        return .init(
-            self.newId(),
-            self.idprovider.idprovider(),
-            self.allocator,
-        );
     }
 
     pub fn dynamicQueryScopeOpts(
@@ -483,6 +470,14 @@ pub const Game = struct {
         // TODO: Later, maybe look through other scenes, if we will allow for
         // storing scenes for later use
         return error.sceneDoesNotExist;
+    }
+
+    pub fn newScene(self: *Self) !Scene {
+        return .init(
+            self.newId(),
+            self.idprovider.idprovider(),
+            self.allocator,
+        );
     }
 
     pub fn setInitialScene(self: *Self, scene: Scene) !void {
