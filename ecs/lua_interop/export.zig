@@ -1,12 +1,12 @@
 const std = @import("std");
-
+const ecs = @import("../prelude.zig");
 const lua = @import("lua_lib");
-const clua = lua.clib;
 
-const utils = @import("../utils.zig");
-const component = @import("../component.zig");
-const entity_storage = @import("../entity_storage.zig");
-const ComponentWrapper = component.ComponentWrapper;
+const clua = lua.clib;
+const utils = ecs.utils;
+const component = ecs.component;
+
+const EntityStorage = @import("../entity_storage.zig");
 
 pub fn ExportOptions(comptime T: type) type {
     return struct {
@@ -130,7 +130,7 @@ pub fn SliceProxy(comptime Slice: type) type {
     };
 }
 
-pub fn ExportLuaInfo(comptime T: type, comptime export_options: ExportOptions(T)) type {
+pub fn MetaData(comptime T: type, comptime export_options: ExportOptions(T)) type {
     return struct {
         pub const MetaTableName = brk: {
             const prefix = if (export_options.name_prefix.len == 0)
@@ -189,7 +189,7 @@ pub fn ExportLuaInfo(comptime T: type, comptime export_options: ExportOptions(T)
         ///
         /// If the component has an allocator field or requires fields that need allocation
         /// it will use storage allocator
-        pub fn wrapperFromLua(state: *clua.lua_State, storage: *entity_storage) !ComponentWrapper {
+        pub fn wrapperFromLua(state: *clua.lua_State, storage: *EntityStorage) !component.Opaque {
             const tableIndex: c_int = 1;
             const comp: *T = try storage.allocator.create(T);
             if (comptime @typeInfo(T) != .@"struct") {
@@ -450,7 +450,7 @@ fn freeRecursive(comptime T: type, val: *const T, allocator: std.mem.Allocator) 
 /// Generates code that is used to interoperate with Lua.
 ///
 /// Ignore fields has to be a tuple of strings
-pub fn ExportLua(comptime T: type, comptime export_options: ExportOptions(T)) ExportLuaInfo(T, export_options) {
+pub fn ExportLua(comptime T: type, comptime export_options: ExportOptions(T)) MetaData(T, export_options) {
     return .{};
 }
 

@@ -1,16 +1,16 @@
-const ComponentId = @import("component.zig").ComponentId;
-const Entity = @import("entity.zig");
-const utils = @import("utils.zig");
+const ecs = @import("prelude.zig");
+const component = ecs.component;
+const utils = ecs.utils;
+
 const PtrTuple = utils.PtrTuple;
-const ComponentWrapper = @import("component.zig").ComponentWrapper;
-const Archetype = @import("entity_storage.zig").Archetype;
+const Archetype = ecs.EntityStorage.Archetype;
 
 pub fn QueryIter(comptime Components: anytype) type {
     const Storage = @import("entity_storage.zig");
     const Len = @typeInfo(@TypeOf(Components)).@"struct".fields.len;
     return struct {
         const Iter = @This();
-        component_ids: [Len]ComponentId,
+        component_ids: [Len]component.Id,
         storage: *Storage,
         next_archetype: usize = 0,
         cache: []const usize,
@@ -19,7 +19,7 @@ pub fn QueryIter(comptime Components: anytype) type {
         archetype_entities: usize = 0,
         archetype: ?*Archetype = null,
 
-        pub fn init(storage: *Storage, component_ids: [Len]ComponentId, cache: []const usize) Iter {
+        pub fn init(storage: *Storage, component_ids: [Len]component.Id, cache: []const usize) Iter {
             return .{
                 .component_ids = component_ids,
                 .storage = storage,
@@ -44,7 +44,7 @@ pub fn QueryIter(comptime Components: anytype) type {
                 const archetype_index = cache[self.next_archetype];
                 self.archetype = &self
                     .storage
-                    .archetypes_v2
+                    .archetypes
                     .items[archetype_index];
                 self.next_archetype += 1;
                 self.archetype_entity_index = self.archetype.?.iterIndex() orelse {

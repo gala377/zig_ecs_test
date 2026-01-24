@@ -1,11 +1,12 @@
 const std = @import("std");
-
 const lua = @import("lua_lib");
-const clua = lua.clib;
+const ecs = @import("prelude.zig");
 
-const ComponentWrapper = @import("component.zig").ComponentWrapper;
-const entity_storage = @import("entity_storage.zig");
-const utils = @import("utils.zig");
+const clua = lua.clib;
+const utils = ecs.utils;
+const component = ecs.component;
+
+const EntityStorage = ecs.EntityStorage;
 
 pub const TypeRegistry = struct {
     types: std.AutoHashMap(usize, Deserializers),

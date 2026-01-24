@@ -1,14 +1,13 @@
 const std = @import("std");
-
+const ecs = @import("prelude.zig");
 const lua = @import("lua_lib");
-const clua = lua.clib;
 
-const ComponentId = @import("component.zig").ComponentId;
-const Entity = @import("entity.zig");
-const LuaPush = @import("entity_storage.zig").ComponentLuaPush;
-const Storage = @import("entity_storage.zig");
-const utils = @import("utils.zig");
-const ArchetypeV2 = @import("entity_storage.zig").Archetype;
+const component = ecs.component;
+const clua = lua.clib;
+const LuaPush = component.ComponentLuaPush;
+const Storage = ecs.EntityStorage;
+const utils = ecs.utils;
+const Archetype = Storage.Archetype;
 
 // Because dunamic query cannot decide the amount of components at comptime
 // the returned components are returned as a slice allocated by the iterator.
@@ -34,19 +33,28 @@ const ArchetypeV2 = @import("entity_storage.zig").Archetype;
 //
 // var scope = storage.dynamicQueryScope(component_ids, .{ allocator = myAlloc });
 pub const DynamicQueryScope = struct {
-    component_ids: []const ComponentId,
-    sorted_component_ids: []const ComponentId,
+    component_ids: []const component.Id,
+    sorted_component_ids: []const component.Id,
     storage: *Storage,
     allocator: std.mem.Allocator,
     cache: []const usize,
 
-    pub fn init(storage: *Storage, component_ids: []const ComponentId, exclude: []const ComponentId, allocator: std.mem.Allocator) !DynamicQueryScope {
-        const sorted = try allocator.dupe(ComponentId, component_ids);
-        std.sort.heap(ComponentId, sorted, {}, std.sort.asc(ComponentId));
-        const exclude_sorted = try allocator.dupe(ComponentId, exclude);
+    pub fn init(
+        storage: *Storage,
+        component_ids: []const component.Id,
+        exclude: []const component.Id,
+        allocator: std.mem.Allocator,
+    ) !DynamicQueryScope {
+        const sorted = try allocator.dupe(component.Id, component_ids);
+        std.sort.heap(component.Id, sorted, {}, std.sort.asc(component.Id));
+
+        const exclude_sorted = try allocator.dupe(component.Id, exclude);
         defer allocator.free(exclude_sorted);
-        std.sort.heap(ComponentId, exclude_sorted, {}, std.sort.asc(ComponentId));
+
+        std.sort.heap(component.Id, exclude_sorted, {}, std.sort.asc(component.Id));
+
         const cache = try storage.lookupQueryHash(sorted, exclude_sorted);
+
         return .{
             .component_ids = component_ids,
             .sorted_component_ids = sorted,
@@ -79,8 +87,8 @@ pub const DynamicQueryIter = struct {
     const Self = @This();
     const MetaTableName = @typeName(Self) ++ "_MetaTable";
 
-    component_ids: []const ComponentId,
-    sorted_component_ids: []const ComponentId,
+    component_ids: []const component.Id,
+    sorted_component_ids: []const component.Id,
     storage: *Storage,
     next_archetype: usize = 0,
     allocator: std.mem.Allocator,
@@ -88,7 +96,7 @@ pub const DynamicQueryIter = struct {
 
     archetype_entity_index: usize = 0,
     archetype_entities: usize = 0,
-    archetype: ?*ArchetypeV2 = null,
+    archetype: ?*Archetype = null,
 
     pub fn next(self: *Self) ?[]LuaAccessibleOpaqueComponent {
         const archetype = self.archetype orelse {
@@ -102,12 +110,15 @@ pub const DynamicQueryIter = struct {
         return self.getComponentsFromCurrentArchetype();
     }
 
-    pub fn progressToNextArchetype(self: *Self, cache: []const usize) ?[]LuaAccessibleOpaqueComponent {
+    pub fn progressToNextArchetype(
+        self: *Self,
+        cache: []const usize,
+    ) ?[]LuaAccessibleOpaqueComponent {
         while (self.next_archetype < cache.len) {
             const archetype_index = cache[self.next_archetype];
             self.archetype = &self
                 .storage
-                .archetypes_v2
+                .archetypes
                 .items[archetype_index];
             self.next_archetype += 1;
             self.archetype_entity_index = self.archetype.?.iterIndex() orelse {
@@ -120,11 +131,16 @@ pub const DynamicQueryIter = struct {
     }
 
     fn getComponentsFromCurrentArchetype(self: *Self) []LuaAccessibleOpaqueComponent {
-        var res = self.allocator.alloc(LuaAccessibleOpaqueComponent, self.component_ids.len) catch {
+        var res = self.allocator.alloc(
+            LuaAccessibleOpaqueComponent,
+            self.component_ids.len,
+        ) catch {
             @panic("oom");
         };
         for (self.component_ids, 0..) |id, idx| {
-            const comp_column_index = self.archetype.?.components_map.get(id) orelse unreachable;
+            const comp_column_index = self.archetype.?.components_map.get(id) orelse {
+                unreachable;
+            };
             const comp_column = &self.archetype.?.components.items[comp_column_index];
             const comp_ptr = comp_column.getOpaque(
                 self.archetype_entity_index,
@@ -140,7 +156,12 @@ pub const DynamicQueryIter = struct {
 
     pub fn luaPush(self: *Self, state: *clua.lua_State) void {
         // std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
-        const udata: *utils.ZigPointer(Self) = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(Self))) orelse @panic("lua could not allocate memory");
+        const udata: *utils.ZigPointer(Self) = clua.lua_newuserdata(
+            state,
+            @sizeOf(utils.ZigPointer(Self)),
+        ) orelse {
+            @panic("lua could not allocate memory");
+        };
         udata.* = utils.ZigPointer(Self){ .ptr = self };
         if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
             @panic("Metatable " ++ MetaTableName ++ "not found");
@@ -153,7 +174,10 @@ pub const DynamicQueryIter = struct {
 
     pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
         // std.debug.print("calling next in zig\n", .{});
-        const ptr: *utils.ZigPointer(Self) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
+        const ptr: *utils.ZigPointer(Self) = @ptrCast(@alignCast(clua.lua_touserdata(
+            state,
+            1,
+        )));
         const self = ptr.ptr;
         const rest = self.next();
         if (rest == null) {
@@ -166,8 +190,8 @@ pub const DynamicQueryIter = struct {
         // create a table on the stack for components
         clua.lua_createtable(state, @intCast(components.len), 0);
 
-        for (components, 1..) |component, idx| {
-            component.push(component.pointer, state);
+        for (components, 1..) |comp, idx| {
+            comp.push(comp.pointer, state);
             clua.lua_seti(state, -2, @intCast(idx));
         }
 

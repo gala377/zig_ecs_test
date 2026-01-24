@@ -1,11 +1,10 @@
 const std = @import("std");
+const ecs = @import("prelude.zig");
 
-const Entity = @import("entity.zig");
-const EntityId = Entity.EntityId;
-const ExportLua = @import("component.zig").ExportLua;
-const EntityStorage = @import("entity_storage.zig");
-const Component = @import("component.zig").LibComponent;
-const utils = @import("utils.zig");
+const utils = ecs.utils;
+const entity = ecs.entity;
+
+const EntityStorage = ecs.EntityStorage;
 
 pub const Scene = struct {
     const Self = @This();
@@ -18,7 +17,11 @@ pub const Scene = struct {
     /// Can be accessed directly to query for components.
     scene_allocator: std.mem.Allocator,
 
-    pub fn init(id: usize, idprovider: utils.IdProvider, allocator: std.mem.Allocator) !Self {
+    pub fn init(
+        id: usize,
+        idprovider: utils.IdProvider,
+        allocator: std.mem.Allocator,
+    ) !Self {
         return .{
             .id = id,
             .scene_allocator = allocator,
@@ -32,9 +35,9 @@ pub const Scene = struct {
         self.entity_storage.deinit();
     }
 
-    pub fn newEntity(self: *Self, comps: anytype) !EntityId {
+    pub fn newEntity(self: *Self, comps: anytype) !entity.Id {
         const id = self.newId();
-        const entity_id = EntityId{
+        const entity_id = entity.Id{
             .scene_id = self.id,
             .entity_id = id,
         };

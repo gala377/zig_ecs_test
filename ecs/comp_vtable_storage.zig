@@ -1,9 +1,9 @@
-const ComponentWrapper = @import("component.zig").ComponentWrapper;
+const component = @import("prelude.zig").component;
 const std = @import("std");
 
 allocator: std.mem.Allocator,
 name_to_id: std.StringHashMap(u64),
-vtables: std.AutoHashMap(u64, *ComponentWrapper.VTable),
+vtables: std.AutoHashMap(u64, *component.Opaque.VTable),
 
 const Self = @This();
 
@@ -15,12 +15,12 @@ pub fn init(allocator: std.mem.Allocator) Self {
     };
 }
 
-pub fn get(self: *Self, comp_id: u64) ?*ComponentWrapper.VTable {
+pub fn get(self: *Self, comp_id: u64) ?*component.Opaque.VTable {
     return self.vtables.get(comp_id);
 }
 
-pub fn new(self: *Self, comp_id: u64, vtable: ComponentWrapper.VTable) !*ComponentWrapper.VTable {
-    const mem = try self.allocator.create(ComponentWrapper.VTable);
+pub fn new(self: *Self, comp_id: u64, vtable: component.Opaque.VTable) !*component.Opaque.VTable {
+    const mem = try self.allocator.create(component.Opaque.VTable);
     mem.* = vtable;
     try self.vtables.put(comp_id, mem);
     const name = try self.allocator.dupe(u8, vtable.name);

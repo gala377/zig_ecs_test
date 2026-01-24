@@ -1,41 +1,39 @@
 const std = @import("std");
-const component_prefix = @import("build_options").components_prefix;
-const ecs = @import("root.zig");
-
+const ecs = @import("prelude.zig");
 const lua = @import("lua_lib");
+
+const component_prefix = @import("build_options").components_prefix;
+
 const clua = lua.clib;
 
-const entity_storage = @import("entity_storage.zig");
-const dynamic_query = @import("dynamic_query.zig");
-const lua_interop = @import("lua_interop/root.zig");
-const utils = @import("utils.zig");
-const VTableStorage = @import("comp_vtable_storage.zig");
-const Schedule = @import("schedule.zig");
-const core = @import("core/core.zig");
-const raylib = @import("raylib/raylib.zig");
-const component_mod = ecs.component;
+const dynamic_query = ecs.dynamic_query;
+const lua_interop = ecs.lua;
+const utils = ecs.utils;
+const core = ecs.core;
+const raylib = ecs.raylib;
+const component = ecs.component;
+const entity = ecs.entity;
+const runtime = ecs.runtime;
+const commands_system = runtime.commands_system;
 
-const Scene = @import("scene.zig").Scene;
-const System = @import("system.zig").System;
+const VTableStorage = ecs.VTableStorage;
+const Schedule = ecs.Schedule;
+const EntityStorage = ecs.EntityStorage;
+const ExportLua = ecs.ExportLua;
+const Scene = ecs.scene.Scene;
+const System = ecs.system.System;
 const LuaSystem = lua_interop.system;
-const Component = component_mod.LibComponent;
-const ComponentId = component_mod.ComponentId;
-const ComponentWrapper = component_mod.ComponentWrapper;
+const Component = ecs.Component;
 const DynamicQueryIter = dynamic_query.DynamicQueryIter;
 const DynamicQueryScope = dynamic_query.DynamicQueryScope;
 const LuaAccessibleOpaqueComponent = dynamic_query.LuaAccessibleOpaqueComponent;
-const Entity = ecs.entity;
-const EntityId = Entity.EntityId;
-const DynamicScopeOptions = entity_storage.DynamicScopeOptions;
-const ExportLua = lua_interop.export_component.ExportLua;
+const DynamicScopeOptions = EntityStorage.DynamicScopeOptions;
 const PtrTuple = utils.PtrTuple;
-const QueryIter = @import("query.zig").QueryIter;
-const Resource = @import("resource.zig").Resource;
-const runtime = ecs.runtime;
+const QueryIter = ecs.query.QueryIter;
+const Resource = ecs.Resource;
 const GameActions = runtime.game_actions;
 const LuaRuntime = runtime.lua_runtime;
 const commands = runtime.commands;
-const commands_system = runtime.commands_system;
 
 pub const BuildOptions = struct {
     generate_lua_stub_files: bool = false,
@@ -98,7 +96,7 @@ pub const Game = struct {
 
     schedule: Schedule,
 
-    global_entity_storage: entity_storage,
+    global_entity_storage: EntityStorage,
     vtable_storage: *VTableStorage,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
@@ -116,7 +114,7 @@ pub const Game = struct {
             .options = options,
             .inner_id = 1,
             .current_scene = null,
-            .global_entity_storage = try entity_storage.init(allocator),
+            .global_entity_storage = try EntityStorage.init(allocator),
             .idprovider = id_provider,
             .vtable_storage = vtable_storage,
             .frame_allocator = .init(std.heap.c_allocator),
@@ -157,12 +155,17 @@ pub const Game = struct {
     /// I think with things like Commands it makes sense but not much more honestly.
     pub fn installRuntime(self: *Self) !void {
         try self.schedule.addDefaultSchedule();
-        try self.addResource(runtime.allocators.GlobalAllocator{ .allocator = self.allocator });
+        try self.addResource(runtime.allocators.GlobalAllocator{
+            .allocator = self.allocator,
+        });
         try self.addResource(runtime.allocators.FrameAllocator{
             .allocator = self.frame_allocator.allocator(),
             .arena = &self.frame_allocator,
         });
-        try self.addResource(GameActions{ .should_close = false, .log = &.{} });
+        try self.addResource(GameActions{
+            .should_close = false,
+            .log = &.{},
+        });
         try self.addResource(commands.init(self));
         try self.addSystem(.post_update, applyGameActions);
         try self.addSystem(.post_update, commands_system.create_entities);
@@ -170,22 +173,54 @@ pub const Game = struct {
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
-        std.debug.print("Exporting {s} = {any}\n", .{ @typeName(Comp), utils.typeId(Comp) });
+        std.debug.print("Exporting {s} = {any}\n", .{
+            @typeName(Comp),
+            utils.typeId(Comp),
+        });
         @TypeOf(Comp.lua_info).registerMetaTable(self.lua_state);
-        @TypeOf(Comp.lua_info).exportId(self.lua_state.state, self.allocator) catch {
+        @TypeOf(Comp.lua_info).exportId(
+            self.lua_state.state,
+            self.allocator,
+        ) catch {
             @panic("could not export component to lua");
         };
     }
 
-    pub fn query(self: *Self, comptime components: anytype, comptime exclude: anytype) Query(components ++ WrapIfNotEmpty(exclude)) {
-        const global_components = self.global_entity_storage.query(components, exclude);
-        const scene_components = if (self.current_scene) |*s| s.entity_storage.query(components, exclude) else null;
-        return Query(components ++ WrapIfNotEmpty(exclude)).init(global_components, scene_components);
+    pub fn query(
+        self: *Self,
+        comptime components: anytype,
+        comptime exclude: anytype,
+    ) Query(components ++ WrapIfNotEmpty(exclude)) {
+        const global_components = self.global_entity_storage.query(
+            components,
+            exclude,
+        );
+        const scene_components = if (self.current_scene) |*s| brk: {
+            break :brk s.entity_storage.query(components, exclude);
+        } else null;
+        return Query(components ++ WrapIfNotEmpty(exclude)).init(
+            global_components,
+            scene_components,
+        );
     }
 
-    pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, exclude: []const ComponentId) !JoinedDynamicScope {
-        const global_scope = try self.global_entity_storage.dynamicQueryScope(components, exclude, .{});
-        const scene_scope = if (self.current_scene) |*s| try s.entity_storage.dynamicQueryScope(components, exclude, .{}) else null;
+    pub fn dynamicQueryScope(
+        self: *Self,
+        components: []const component.Id,
+        exclude: []const component.Id,
+    ) !JoinedDynamicScope {
+        const global_scope = try self.global_entity_storage.dynamicQueryScope(
+            components,
+            exclude,
+            .{},
+        );
+        const scene_scope = if (self.current_scene) |*s| brk: {
+            break :brk try s.entity_storage.dynamicQueryScope(
+                components,
+                exclude,
+                .{},
+            );
+        } else null;
         return JoinedDynamicScope{
             .global_scope = global_scope,
             .scene_scope = scene_scope,
@@ -194,12 +229,31 @@ pub const Game = struct {
     }
 
     pub fn newScene(self: *Self) !Scene {
-        return .init(self.newId(), self.idprovider.idprovider(), self.allocator);
+        return .init(
+            self.newId(),
+            self.idprovider.idprovider(),
+            self.allocator,
+        );
     }
 
-    pub fn dynamicQueryScopeOpts(self: *Self, components: []const ComponentId, exclude: []const ComponentId, options: DynamicScopeOptions) !JoinedDynamicScope {
-        const global_scope = try self.global_entity_storage.dynamicQueryScope(components, exclude, options);
-        const scene_scope = if (self.current_scene) |*s| try s.entity_storage.dynamicQueryScope(components, exclude, options) else null;
+    pub fn dynamicQueryScopeOpts(
+        self: *Self,
+        components: []const component.Id,
+        exclude: []const component.Id,
+        options: DynamicScopeOptions,
+    ) !JoinedDynamicScope {
+        const global_scope = try self.global_entity_storage.dynamicQueryScope(
+            components,
+            exclude,
+            options,
+        );
+        const scene_scope = if (self.current_scene) |*s| brk: {
+            break :brk try s.entity_storage.dynamicQueryScope(
+                components,
+                exclude,
+                options,
+            );
+        } else null;
         return JoinedDynamicScope{
             .global_scope = global_scope,
             .scene_scope = scene_scope,
@@ -218,10 +272,19 @@ pub const Game = struct {
 
     pub fn addEvent(self: *Self, comptime T: type) !void {
         _ = try self.newGlobalEntity(.{
-            runtime.events.EventBuffer(T){ .allocator = self.allocator, .events = &.{} },
-            runtime.events.EventWriterBuffer(T){ .allocator = self.allocator, .events = .empty },
+            runtime.events.EventBuffer(T){
+                .allocator = self.allocator,
+                .events = &.{},
+            },
+            runtime.events.EventWriterBuffer(T){
+                .allocator = self.allocator,
+                .events = .empty,
+            },
         });
-        try self.addSystems(.tear_down, &.{runtime.events.eventSystem(T)});
+        try self.addSystems(
+            .tear_down,
+            &.{runtime.events.eventSystem(T)},
+        );
     }
 
     /// Add a system defined in lua.
@@ -229,14 +292,22 @@ pub const Game = struct {
     /// The lua file should return a system built with system builder
     pub fn addLuaSystem(self: *Self, phase: Schedule.Phase, path: []const u8) !void {
         const cwd = std.fs.cwd();
-
         var file = try cwd.openFile(path, .{});
         defer file.close();
-        const contents = try file.readToEndAlloc(self.allocator, std.math.maxInt(usize));
+        const contents = try file.readToEndAlloc(
+            self.allocator,
+            std.math.maxInt(usize),
+        );
         defer self.allocator.free(contents);
         try self.lua_state.loadWithName(contents, path);
-        const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
-        try self.schedule.add(phase, try system.intoSystem());
+        const system = try LuaSystem.fromLua(
+            self.lua_state,
+            self.allocator,
+        );
+        try self.schedule.add(
+            phase,
+            try system.intoSystem(),
+        );
     }
 
     /// Add multiple systems from lua.
@@ -246,64 +317,107 @@ pub const Game = struct {
         const cwd = std.fs.cwd();
         var file = try cwd.openFile(path, .{});
         defer file.close();
-        const contents = try file.readToEndAlloc(self.allocator, std.math.maxInt(usize));
+        const contents = try file.readToEndAlloc(
+            self.allocator,
+            std.math.maxInt(usize),
+        );
         defer self.allocator.free(contents);
         self.lua_state.loadWithName(contents, path) catch |err| {
-            std.debug.print("got arror when loading lua thing {any}\n", .{err});
+            std.debug.print(
+                "got arror when loading lua thing {any}\n",
+                .{err},
+            );
             return err;
         };
         if (clua.lua_type(@ptrCast(self.lua_state.state), -1) != clua.LUA_TTABLE) {
             return error.expectedTable;
         }
-        const len = clua.lua_rawlen(@ptrCast(self.lua_state.state), -1);
+        const len = clua.lua_rawlen(
+            @ptrCast(self.lua_state.state),
+            -1,
+        );
         for (0..len) |idx| {
             _ = clua.lua_geti(@ptrCast(self.lua_state.state), -1, @intCast(idx + 1));
-            const system = try LuaSystem.fromLua(self.lua_state, self.allocator);
-            try self.schedule.add(phase, try system.intoSystem());
+            const system = try LuaSystem.fromLua(
+                self.lua_state,
+                self.allocator,
+            );
+            try self.schedule.add(
+                phase,
+                try system.intoSystem(),
+            );
         }
         try self.lua_state.pop();
     }
 
     /// Add a zig functionas a system to a specific phase.
     pub fn addSystem(self: *Self, phase: Schedule.Phase, comptime sys: anytype) !void {
-        try self.schedule.add(phase, ecs.system(sys));
+        try self.schedule.add(
+            phase,
+            ecs.system.func(sys),
+        );
     }
 
-    pub fn addSystemToSchedule(self: *Self, phase: Schedule.Phase, label: anytype, comptime sys: anytype) !void {
-        try self.schedule.addToSchedule(phase, label, ecs.system(sys));
+    pub fn addSystemToSchedule(
+        self: *Self,
+        phase: Schedule.Phase,
+        label: anytype,
+        comptime sys: anytype,
+    ) !void {
+        try self.schedule.addToSchedule(
+            phase,
+            label,
+            ecs.system.func(sys),
+        );
     }
 
     /// Add multiple systems to specific phase.
     ///
     /// Those systems have to be already wrapped into a System interface
     /// TODO: We need to think about what interface we want to expose as addSystem and addSystems have different api
-    pub fn addSystems(self: *Self, phase: Schedule.Phase, systems: []const System) !void {
+    pub fn addSystems(
+        self: *Self,
+        phase: Schedule.Phase,
+        systems: []const System,
+    ) !void {
         for (systems) |s| {
             try self.schedule.add(phase, s);
         }
     }
 
-    pub fn addSystemsToSchedule(self: *Self, phase: Schedule.Phase, schedule: anytype, systems: []const System) !void {
+    pub fn addSystemsToSchedule(
+        self: *Self,
+        phase: Schedule.Phase,
+        schedule: anytype,
+        systems: []const System,
+    ) !void {
         for (systems) |s| {
-            try self.schedule.addToSchedule(phase, schedule, s);
+            try self.schedule.addToSchedule(
+                phase,
+                schedule,
+                s,
+            );
         }
     }
 
-    pub fn newGlobalEntity(self: *Self, components: anytype) !EntityId {
+    pub fn newGlobalEntity(self: *Self, components: anytype) !entity.Id {
         const id = self.newId();
-        const entity_id = EntityId{
+        const entity_id = entity.Id{
             .scene_id = 0,
             .entity_id = id,
         };
         const with_id = .{entity_id} ++ components;
-        try self.global_entity_storage.add(entity_id, with_id);
+        try self.global_entity_storage.add(
+            entity_id,
+            with_id,
+        );
         return entity_id;
     }
 
-    pub fn removeEntities(self: *Self, ids: []EntityId) !void {
-        var global_entities = std.ArrayList(EntityId).empty;
+    pub fn removeEntities(self: *Self, ids: []entity.Id) !void {
+        var global_entities = std.ArrayList(entity.Id).empty;
         defer global_entities.deinit(self.allocator);
-        var scene_entities = std.ArrayList(EntityId).empty;
+        var scene_entities = std.ArrayList(entity.Id).empty;
         defer scene_entities.deinit(self.allocator);
         for (ids) |id| {
             if (id.scene_id == 0) {
@@ -329,13 +443,19 @@ pub const Game = struct {
     // Adds components to a given entity.
     //
     // Does not take ownership over a slice of components.
-    pub fn addComponents(self: *Self, id: EntityId, components: []ComponentWrapper) !void {
+    pub fn addComponents(self: *Self, id: entity.Id, components: []component.Opaque) !void {
         if (id.scene_id == 0) {
-            try self.global_entity_storage.addComponents(id, components);
+            try self.global_entity_storage.addComponents(
+                id,
+                components,
+            );
             return;
         } else if (self.current_scene) |*scene| {
             if (scene.id == id.scene_id) {
-                try scene.entity_storage.addComponents(id, components);
+                try scene.entity_storage.addComponents(
+                    id,
+                    components,
+                );
                 return;
             }
         }
@@ -344,13 +464,19 @@ pub const Game = struct {
         return error.sceneDoesNotExist;
     }
 
-    pub fn newEntityWrapped(self: *Self, id: EntityId, components: []const ComponentWrapper) !void {
+    pub fn newEntityWrapped(self: *Self, id: entity.Id, components: []const component.Opaque) !void {
         if (id.scene_id == 0) {
-            try self.global_entity_storage.addWrapped(id, components);
+            try self.global_entity_storage.addWrapped(
+                id,
+                components,
+            );
             return;
         } else if (self.current_scene) |*scene| {
             if (scene.id == id.scene_id) {
-                try scene.entity_storage.addWrapped(id, components);
+                try scene.entity_storage.addWrapped(
+                    id,
+                    components,
+                );
                 return;
             }
         }
@@ -400,7 +526,7 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.win
         // TODO: this one is weird as we add game actions in the runtime
         // but we expose them to lua here
         game.exportComponent(GameActions);
-        game.exportComponent(EntityId);
+        game.exportComponent(entity.Id);
         game.exportComponent(core.Vec2);
         game.exportComponent(core.Position);
         game.exportComponent(core.Style);
@@ -545,9 +671,15 @@ pub const DynamicQuery = struct {
 
     pub fn luaPush(self: *Self, state: *clua.lua_State, allocator: std.mem.Allocator) void {
         // std.debug.print("Pushing value of t={s}\n", .{@typeName(Self)});
-        const raw = clua.lua_newuserdata(state, @sizeOf(utils.ZigPointer(Self))) orelse @panic("lua could not allocate memory");
+        const raw = clua.lua_newuserdata(
+            state,
+            @sizeOf(utils.ZigPointer(Self)),
+        ) orelse @panic("lua could not allocate memory");
         const udata: *utils.ZigPointer(Self) = @ptrCast(@alignCast(raw));
-        udata.* = utils.ZigPointer(Self){ .ptr = self, .allocator = allocator };
+        udata.* = utils.ZigPointer(Self){
+            .ptr = self,
+            .allocator = allocator,
+        };
         if (clua.luaL_getmetatable(state, MetaTableName) == 0) {
             @panic("Metatable " ++ MetaTableName ++ "not found");
         }
@@ -559,7 +691,10 @@ pub const DynamicQuery = struct {
 
     pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
         // std.debug.print("calling next in zig\n", .{});
-        const ptr: *utils.ZigPointer(Self) = @ptrCast(@alignCast(clua.lua_touserdata(state, 1)));
+        const ptr: *utils.ZigPointer(Self) = @ptrCast(@alignCast(clua.lua_touserdata(
+            state,
+            1,
+        )));
         const self = ptr.ptr;
         const rest = self.next();
         if (rest == null) {
@@ -570,13 +705,20 @@ pub const DynamicQuery = struct {
         const components = rest.?;
 
         // create a table on the stack for components
-        clua.lua_createtable(state, @intCast(components.len), 0);
+        clua.lua_createtable(
+            state,
+            @intCast(components.len),
+            0,
+        );
 
-        for (components, 1..) |component, idx| {
-            component.push(component.pointer, state, self.allocator);
+        for (components, 1..) |comp, idx| {
+            comp.push(
+                comp.pointer,
+                state,
+                self.allocator,
+            );
             clua.lua_seti(state, -2, @intCast(idx));
         }
-
         self.allocator.free(components);
         return 1;
     }

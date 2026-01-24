@@ -1,5 +1,6 @@
 const std = @import("std");
-const ComponentId = @import("component.zig").ComponentId;
+const ecs = @import("prelude.zig");
+const component = ecs.component;
 
 pub fn assertSorted(comptime T: type, s: []T) Sorted([]T) {
     if (s.len != 0) {
@@ -117,7 +118,7 @@ pub fn PtrTuple(comptime Types: anytype) type {
     });
 }
 
-pub fn isSubset(set: Sorted([]const ComponentId), of: Sorted([]const ComponentId)) bool {
+pub fn isSubset(set: Sorted([]const component.Id), of: Sorted([]const component.Id)) bool {
     if (set.len > of.len) {
         return false;
     }

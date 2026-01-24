@@ -1,23 +1,23 @@
 const std = @import("std");
-
 const rg = @import("raygui");
 const rl = @import("raylib");
-const ecs = @import("../root.zig");
+const ecs = @import("../prelude.zig");
+
+const core = ecs.core;
+const system = ecs.system;
+const shapes = ecs.core.shapes;
+const imgui = ecs.imgui;
 
 const Game = ecs.Game;
-const system = ecs.system;
-const WindowOptions = ecs.core.window.WindowOptions;
 const Resource = ecs.Resource;
 const GameActions = ecs.runtime.game_actions;
 const Query = ecs.Query;
-const core = ecs.core;
-const shapes = ecs.core.shapes;
-const imgui = ecs.imgui;
-const DefaultSchedule = ecs.schedule.DefaultSchedule;
+const DefaultSchedule = ecs.Schedule.DefaultSchedule;
+const WindowOptions = core.window.WindowOptions;
 
-const utils = @import("utils.zig");
+pub const utils = @import("utils.zig");
 
-const RaylibSchedule = struct {};
+pub const RaylibSchedule = struct {};
 
 pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
     // define raylib schedules
@@ -36,8 +36,8 @@ pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
     try game.addSystemToSchedule(.pre_render, RaylibSchedule{}, beginDraw);
 
     try game.addSystemsToSchedule(.render, RaylibSchedule{}, &.{
-        system(draw_circles),
-        system(draw_rectangle),
+        system.func(draw_circles),
+        system.func(draw_rectangle),
     });
 
     try game.addSystemToSchedule(.post_render, RaylibSchedule{}, endDraw);

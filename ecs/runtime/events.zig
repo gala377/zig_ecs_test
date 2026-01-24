@@ -1,23 +1,20 @@
 const std = @import("std");
-const lua = @import("lua_lib");
-const ecs = @import("../root.zig");
+const ecs = @import("../prelude.zig");
 
-const component_prefix = @import("build_options").components_prefix;
 const component = ecs.component;
-const Component = component.LibComponent;
-const ExportLua = ecs.ExportLua;
+const resource = ecs.resource;
 
-const ResourceProxy = @import("../mapped.zig").ResourceProxy;
+const Component = component.Component;
+const ExportLua = ecs.ExportLua;
 const Resource = ecs.Resource;
 const Game = ecs.Game;
-const System = ecs.system_mod.System;
+const System = ecs.system.System;
 
 pub fn EventBuffer(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub const component_info = Component(component_prefix, Self);
+        pub const component_info = Component(Self);
         pub const lua_info = ExportLua(Self, .{
-            .name_prefix = component_prefix,
             .ignored_fields = &.{.allocator},
         });
 
@@ -41,7 +38,7 @@ pub fn EventBuffer(comptime T: type) type {
 pub fn EventReader(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub const resource_proxy_info = ResourceProxy(EventBuffer(T));
+        pub const resource_proxy_info = resource.Proxy(EventBuffer(T));
 
         buffer: []T,
         pos: usize = 0,
@@ -65,7 +62,7 @@ pub fn EventReader(comptime T: type) type {
 pub fn EventWriterBuffer(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub const component_info = Component(component_prefix, Self);
+        pub const component_info = Component(Self);
 
         events: std.ArrayList(T),
         allocator: std.mem.Allocator,
@@ -84,7 +81,7 @@ pub fn EventWriterBuffer(comptime T: type) type {
 pub fn EventWriter(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub const resource_proxy_info = ResourceProxy(EventWriterBuffer(T));
+        pub const resource_proxy_info = resource.Proxy(EventWriterBuffer(T));
 
         buffer: *std.ArrayList(T),
         allocator: std.mem.Allocator,

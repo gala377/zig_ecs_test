@@ -1,23 +1,24 @@
 const std = @import("std");
 const lua = @import("lua_lib");
+const ecs = @import("prelude.zig");
 
 const clua = lua.clib;
 
-const utils = @import("utils.zig");
-const entity_storage = @import("entity_storage.zig");
+const utils = ecs.utils;
+const EntityStorage = ecs.EntityStorage;
 
-pub const ComponentId = u64;
+pub const Id = u64;
 pub const ComponentDeinit = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentFree = *const fn (*anyopaque, allocator: std.mem.Allocator) void;
 pub const ComponentLuaPush = *const fn (*anyopaque, state: *clua.lua_State, allocator: std.mem.Allocator) void;
-pub const ComponentFromLua = *const fn (state: *clua.lua_State, storage: *entity_storage) void;
+pub const ComponentFromLua = *const fn (state: *clua.lua_State, storage: *EntityStorage) void;
 
 fn emptyDeinit(ptr: *anyopaque, allocator: std.mem.Allocator) void {
     _ = ptr;
     _ = allocator;
 }
 
-pub const ComponentWrapper = struct {
+pub const Opaque = struct {
     pub const VTable = struct {
         size: usize,
         alignment: usize,
@@ -32,14 +33,14 @@ pub const ComponentWrapper = struct {
     /// should have static lifetime
     vtable: *const VTable,
     /// assumed to be utils.typeId(Self)
-    component_id: ComponentId,
+    component_id: Id,
 };
 
-pub fn vtableOf(comptime T: type) *const ComponentWrapper.VTable {
+pub fn vtableOf(comptime T: type) *const Opaque.VTable {
     return @TypeOf(T.component_info).vtable;
 }
 
-pub fn wrap(comptime T: type, comp: *T) ComponentWrapper {
+pub fn wrap(comptime T: type, comp: *T) Opaque {
     return .{
         .component_id = utils.typeId(T),
         .pointer = @ptrCast(@alignCast(comp)),
@@ -47,11 +48,11 @@ pub fn wrap(comptime T: type, comp: *T) ComponentWrapper {
     };
 }
 
-pub fn ComponentInfo(comptime T: type, comptime name: []const u8) type {
+pub fn MetaData(comptime T: type, comptime name: []const u8) type {
     return struct {
         pub const comp_name = name;
 
-        pub const vtable: *const ComponentWrapper.VTable = brk: {
+        pub const vtable: *const Opaque.VTable = brk: {
             const compDeinit: ComponentDeinit = if (std.meta.hasMethod(T, "deinit"))
                 @ptrCast(&T.deinit)
             else
@@ -74,7 +75,7 @@ pub fn ComponentInfo(comptime T: type, comptime name: []const u8) type {
             };
         };
 
-        pub fn wrapper(this: *anyopaque) ComponentWrapper {
+        pub fn wrapper(this: *anyopaque) Opaque {
             return .{
                 .pointer = this,
                 .component_id = utils.typeId(T),
@@ -84,13 +85,13 @@ pub fn ComponentInfo(comptime T: type, comptime name: []const u8) type {
     };
 }
 
-pub fn Component(comptime T: type) ComponentInfo(T, @typeName(T)) {
+pub fn Component(comptime T: type) MetaData(T, @typeName(T)) {
     return .{};
 }
 
 pub fn LibComponent(
     comptime name_prefix: []const u8,
     comptime T: type,
-) ComponentInfo(T, name_prefix ++ "." ++ @typeName(T)) {
+) MetaData(T, name_prefix ++ "." ++ @typeName(T)) {
     return .{};
 }

@@ -1,21 +1,13 @@
 const std = @import("std");
-const lua = @import("lua_lib");
-const ecs = @import("../root.zig");
+const ecs = @import("../prelude.zig");
 
-const component_prefix = @import("build_options").components_prefix;
-const component = ecs.component;
-const Component = component.LibComponent;
-const ExportLua = ecs.lua.export_component.ExportLua;
+const Component = ecs.Component;
+const ExportLua = ecs.ExportLua;
 
 const Self = @This();
 
-pub const component_info = Component(component_prefix, Self);
-pub const lua_info = ExportLua(
-    Self,
-    .{
-        .name_prefix = component_prefix,
-    },
-);
+pub const component_info = Component(Self);
+pub const lua_info = ExportLua(Self, .{});
 
 should_close: bool,
 log: [][]const u8,

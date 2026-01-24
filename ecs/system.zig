@@ -1,6 +1,9 @@
-const Game = @import("game.zig").Game;
 const std = @import("std");
-const utils = @import("utils.zig");
+const ecs = @import("prelude.zig");
+
+const utils = ecs.utils;
+
+const Game = ecs.Game;
 
 pub const SystemVTable = struct {
     run: *const fn (?*anyopaque, *Game) void,
@@ -109,6 +112,8 @@ pub fn system(comptime F: anytype) System {
         },
     };
 }
+
+pub const func = system;
 
 fn mkFunctionSystemRet(comptime Ret: type, comptime F: anytype) fn (?*anyopaque, *Game) Ret {
     const info = @typeInfo(@TypeOf(F));

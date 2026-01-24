@@ -1,9 +1,10 @@
 const std = @import("std");
+const ecs = @import("prelude.zig");
 
-const system = @import("system.zig");
-const System = system.System;
-const Game = @import("game.zig").Game;
-const utils = @import("utils.zig");
+const utils = ecs.utils;
+
+const System = ecs.system.System;
+const Game = ecs.Game;
 
 const Self = @This();
 

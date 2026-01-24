@@ -30,20 +30,18 @@
 /// have independant caches that would be recomputed, if needed, within the `reduce`
 /// part that would make them lockless.
 const std = @import("std");
-const builtin = @import("builtin");
+const ecs = @import("prelude.zig");
+const lua_lib = @import("lua_lib");
 
-const clua = @import("lua_lib").clib;
-const component_mod = @import("component.zig");
-const assertSorted = @import("utils.zig").assertSorted;
-const ComponentId = component_mod.ComponentId;
-const ComponentWrapper = component_mod.ComponentWrapper;
-const DynamicQueryScope = @import("dynamic_query.zig").DynamicQueryScope;
-const Entity = @import("entity.zig");
-const EntityId = Entity.EntityId;
-const PtrTuple = @import("utils.zig").PtrTuple;
-const QueryIter = @import("query.zig").QueryIter;
-const Sorted = @import("utils.zig").Sorted;
-const utils = @import("utils.zig");
+const clua = lua_lib.clib;
+const component = ecs.component;
+const utils = ecs.utils;
+const entity = ecs.entity;
+
+const DynamicQueryScope = ecs.dynamic_query.DynamicQueryScope;
+const QueryIter = ecs.query.QueryIter;
+const Sorted = utils.Sorted;
+const assertSorted = utils.assertSorted;
 
 const Self = @This();
 
@@ -53,7 +51,7 @@ pub const ComponentLuaPush = *const fn (*anyopaque, state: *clua.lua_State, allo
 pub const ComponentFromLua = *const fn (state: *clua.lua_State, storage: *Self) void;
 
 // Maps entities to their respective archetypes so we can
-pub const EntityMap = std.AutoHashMap(EntityId, EntityArchetypeRecord);
+pub const EntityMap = std.AutoHashMap(entity.Id, EntityArchetypeRecord);
 
 const EntityArchetypeRecord = struct {
     // archetype that this entity belogs to
@@ -70,13 +68,13 @@ pub const Archetype = struct {
     /// stores all the components in the archetype
     components: std.ArrayList(ComponentColumn),
     /// maps component id to the index in the components array
-    components_map: std.AutoHashMap(ComponentId, usize),
+    components_map: std.AutoHashMap(component.Id, usize),
 
     /// Sorted list of component ids stored within this archetype.
     ///
     /// can be derived from component_map.each.component_id
     /// or from component_map
-    components_ids: []const ComponentId,
+    components_ids: []const component.Id,
 
     archetype_index: usize,
 
@@ -84,13 +82,13 @@ pub const Archetype = struct {
         allocator: std.mem.Allocator,
         archetype_index: usize,
         // sorted component ids in increasing order, owned
-        sorted_components_ids: []const ComponentId,
+        sorted_components_ids: []const component.Id,
         // should have the same order as vtables, not owned
-        component_ids: []const ComponentId,
-        vtables: []*const ComponentWrapper.VTable,
+        component_ids: []const component.Id,
+        vtables: []*const component.Opaque.VTable,
     ) !@This() {
         std.debug.assert(sorted_components_ids.len == vtables.len);
-        var components_map = std.AutoHashMap(ComponentId, usize).init(allocator);
+        var components_map = std.AutoHashMap(component.Id, usize).init(allocator);
         var components = try std.ArrayList(ComponentColumn).initCapacity(allocator, sorted_components_ids.len);
         for (vtables, component_ids, 0..vtables.len) |vtable, comp_id, index| {
             try components_map.put(comp_id, index);
@@ -146,7 +144,7 @@ pub const Archetype = struct {
         }
     }
 
-    pub fn finalizeById(self: *@This(), index: usize, allocator: std.mem.Allocator, ids: []const ComponentId) void {
+    pub fn finalizeById(self: *@This(), index: usize, allocator: std.mem.Allocator, ids: []const component.Id) void {
         for (ids) |component_id| {
             const component_index = self.components_map.get(component_id) orelse @panic("component is missing");
             const column = &self.components[component_index];
@@ -162,27 +160,27 @@ pub const Archetype = struct {
         try self.freelist.put(index, 0);
     }
 
-    // Does not free memory that has been allocated for ComponentWrapper.
+    // Does not free memory that has been allocated for component.Opaque.
     // This has to be one by the caller.
-    pub fn add(self: *@This(), allocator: std.mem.Allocator, components: []const ComponentWrapper) !usize {
+    pub fn add(self: *@This(), allocator: std.mem.Allocator, components: []const component.Opaque) !usize {
         const index = try self.allocate(allocator);
-        for (components) |component| {
-            const component_id = component.component_id;
+        for (components) |comp| {
+            const component_id = comp.component_id;
             const column_index = self.components_map.get(component_id) orelse unreachable;
-            const pointer_many: [*]const u8 = @ptrCast(@alignCast(component.pointer));
-            const pointer: []const u8 = pointer_many[0..component.vtable.size];
+            const pointer_many: [*]const u8 = @ptrCast(@alignCast(comp.pointer));
+            const pointer: []const u8 = pointer_many[0..comp.vtable.size];
             self.components.items[column_index].insertAtUnchecked(index, component_id, pointer);
         }
         return index;
     }
 
     // Inserts component ats the given space, does not free the memory allocated to the component
-    pub fn insertUncheked(self: @This(), index: usize, components: []const ComponentWrapper) void {
-        for (components) |component| {
-            const component_id = component.component_id;
+    pub fn insertUncheked(self: @This(), index: usize, components: []const component.Opaque) void {
+        for (components) |comp| {
+            const component_id = comp.component_id;
             const column_index = self.components_map.get(component_id) orelse unreachable;
-            const pointer_many: [*]const u8 = @ptrCast(@alignCast(component.pointer));
-            const pointer: []const u8 = pointer_many[0..component.vtable.size];
+            const pointer_many: [*]const u8 = @ptrCast(@alignCast(comp.pointer));
+            const pointer: []const u8 = pointer_many[0..comp.vtable.size];
             self.components.items[column_index].insertAtUnchecked(index, component_id, pointer);
         }
     }
@@ -232,12 +230,12 @@ pub const Archetype = struct {
 pub const ComponentColumn = struct {
     component_size: usize,
     column_size: usize, // can be derived from buffer.items.size / component_size
-    component_id: ComponentId,
-    vtable: *const ComponentWrapper.VTable,
+    component_id: component.Id,
+    vtable: *const component.Opaque.VTable,
     // Align to 64 so that everything can be stored without problems
     buffer: std.array_list.Aligned(u8, std.mem.Alignment.@"8"),
 
-    pub fn init(component_id: usize, vtable: *const ComponentWrapper.VTable) @This() {
+    pub fn init(component_id: usize, vtable: *const component.Opaque.VTable) @This() {
         return .{
             .component_id = component_id,
             .column_size = 0,
@@ -247,7 +245,7 @@ pub const ComponentColumn = struct {
         };
     }
 
-    pub fn insertAtUnchecked(self: *@This(), index: usize, component_id: ComponentId, bytes: []const u8) void {
+    pub fn insertAtUnchecked(self: *@This(), index: usize, component_id: component.Id, bytes: []const u8) void {
         std.debug.assert(self.component_id == component_id);
         const buffer_index = index * self.component_size;
         @memcpy(self.buffer.items[buffer_index .. buffer_index + self.component_size], bytes);
@@ -261,7 +259,7 @@ pub const ComponentColumn = struct {
         return (self.buffer.items.len / self.component_size) - 1;
     }
 
-    pub fn addBytes(self: *@This(), allocator: std.mem.Allocator, component_id: ComponentId, bytes: []const u8) !void {
+    pub fn addBytes(self: *@This(), allocator: std.mem.Allocator, component_id: component.Id, bytes: []const u8) !void {
         std.debug.assert(self.component_id == component_id);
         try self.buffer.appendSlice(allocator, bytes);
     }
@@ -298,25 +296,18 @@ pub const ComponentColumn = struct {
     }
 };
 
-pub const ArchetypeStorage = struct {
-    components: []const ComponentId,
-    entities: std.AutoArrayHashMap(usize, Entity),
-    // abstract index used to quickly access archetype
-    archetype_index: usize,
-};
-
-archetypes_v2: std.ArrayList(Archetype),
+archetypes: std.ArrayList(Archetype),
 entity_map: EntityMap,
 
 // archetypes: std.ArrayList(ArchetypeStorage),
-components_per_archetype: std.ArrayList(Sorted([]const ComponentId)),
+components_per_archetype: std.ArrayList(Sorted([]const component.Id)),
 queries_hash: std.AutoHashMap(u64, std.ArrayList(CacheEntry)),
 allocator: std.mem.Allocator,
 mutex: std.Thread.Mutex,
 
 const CacheEntry = struct {
-    components: []const ComponentId,
-    exclude: []const ComponentId,
+    components: []const component.Id,
+    exclude: []const component.Id,
     archetypes: []const usize,
 };
 
@@ -327,7 +318,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .allocator = allocator,
         .queries_hash = .init(allocator),
         .entity_map = .init(allocator),
-        .archetypes_v2 = .empty,
+        .archetypes = .empty,
         .mutex = .{},
     };
 }
@@ -335,23 +326,23 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 // Adds entity with the given id to the storage.
 //
 // Copies all the components to the allocated space for them.
-pub fn add(self: *Self, id: EntityId, components: anytype) !void {
+pub fn add(self: *Self, id: entity.Id, components: anytype) !void {
     const tinfo = @typeInfo(@TypeOf(components));
     if (comptime tinfo != .@"struct" and !tinfo.@"struct".is_tuple) {
         @compileError("components of an entity have to be passed as a tuple");
     }
     const components_len = tinfo.@"struct".fields.len;
-    var vtables: [components_len]*const ComponentWrapper.VTable = undefined;
-    var component_ids: [components_len]ComponentId = undefined;
-    var wrappers: [components_len]ComponentWrapper = undefined;
-    inline for (components, 0..) |component, index| {
-        const vtable = component_mod.vtableOf(@TypeOf(component));
+    var vtables: [components_len]*const component.Opaque.VTable = undefined;
+    var component_ids: [components_len]component.Id = undefined;
+    var wrappers: [components_len]component.Opaque = undefined;
+    inline for (components, 0..) |comp, index| {
+        const vtable = component.vtableOf(@TypeOf(comp));
         vtables[index] = vtable;
-        component_ids[index] = utils.typeId(@TypeOf(component));
-        const boxed = try self.allocator.create(@TypeOf(component));
-        boxed.* = component;
-        wrappers[index] = ComponentWrapper{
-            .component_id = utils.typeId(@TypeOf(component)),
+        component_ids[index] = utils.typeId(@TypeOf(comp));
+        const boxed = try self.allocator.create(@TypeOf(comp));
+        boxed.* = comp;
+        wrappers[index] = component.Opaque{
+            .component_id = utils.typeId(@TypeOf(comp)),
             .pointer = @ptrCast(boxed),
             .vtable = vtable,
         };
@@ -362,25 +353,25 @@ pub fn add(self: *Self, id: EntityId, components: anytype) !void {
         .archetype_index = storage.archetype_index,
         .row_id = row_id,
     });
-    inline for (components, 0..) |component, index| {
+    inline for (components, 0..) |comp, index| {
         self.allocator.destroy(
             @as(
-                *@TypeOf(component),
+                *@TypeOf(comp),
                 @ptrCast(@alignCast(wrappers[index].pointer)),
             ),
         );
     }
 }
 
-pub fn addWrapped(self: *Self, id: EntityId, components: []const ComponentWrapper) !void {
-    var vtables = try self.allocator.alloc(*const ComponentWrapper.VTable, components.len);
-    var component_ids = try self.allocator.alloc(ComponentId, components.len);
+pub fn addWrapped(self: *Self, id: entity.Id, components: []const component.Opaque) !void {
+    var vtables = try self.allocator.alloc(*const component.Opaque.VTable, components.len);
+    var component_ids = try self.allocator.alloc(component.Id, components.len);
     defer self.allocator.free(vtables);
     defer self.allocator.free(component_ids);
-    for (components, 0..) |component, index| {
-        const vtable = component.vtable;
+    for (components, 0..) |comp, index| {
+        const vtable = comp.vtable;
         vtables[index] = vtable;
-        component_ids[index] = component.component_id;
+        component_ids[index] = comp.component_id;
     }
     const storage = try self.findOrCreateArchetype(component_ids, vtables);
     const row_id = try storage.add(self.allocator, components);
@@ -393,22 +384,22 @@ pub fn addWrapped(self: *Self, id: EntityId, components: []const ComponentWrappe
 /// Removes entities from the storage.
 ///
 /// Runs deinit on all of the components.
-pub fn remove(self: *Self, ids: []EntityId) !void {
+pub fn remove(self: *Self, ids: []entity.Id) !void {
     for (ids) |id| {
         const record = self.entity_map.get(id) orelse @panic("entity does not have a record");
-        const archetype = &self.archetypes_v2.items[record.archetype_index];
+        const archetype = &self.archetypes.items[record.archetype_index];
         archetype.finalize(record.row_id, self.allocator);
         try archetype.remove(record.row_id);
         _ = self.entity_map.remove(id);
     }
 }
 
-pub fn addComponents(self: *Self, entity_id: EntityId, components: []ComponentWrapper) !void {
+pub fn addComponents(self: *Self, entity_id: entity.Id, components: []component.Opaque) !void {
     // find entity
     const record = self.entity_map.get(entity_id) orelse @panic("entity does not exist");
     std.debug.print("Retrieved record for removal {any}\n", .{record});
-    std.debug.print("Archetypes len is {any}\n", .{self.archetypes_v2.items.len});
-    const archetype = &self.archetypes_v2.items[record.archetype_index];
+    std.debug.print("Archetypes len is {any}\n", .{self.archetypes.items.len});
+    const archetype = &self.archetypes.items[record.archetype_index];
 
     // sanity check
     for (components) |wrapper| {
@@ -420,35 +411,35 @@ pub fn addComponents(self: *Self, entity_id: EntityId, components: []ComponentWr
 
     // create table of new components
     var new_components = try self.allocator.alloc(
-        ComponentWrapper,
+        component.Opaque,
         components.len + archetype.components_ids.len,
     );
     defer self.allocator.free(new_components);
     for (archetype.components.items, 0..) |*column, index| {
         const ptr = column.getOpaque(record.row_id);
-        const wrapper: ComponentWrapper = .{
+        const wrapper: component.Opaque = .{
             .vtable = column.vtable,
             .component_id = column.component_id,
             .pointer = ptr,
         };
         new_components[index] = wrapper;
     }
-    for (components, archetype.components_ids.len..) |component, index| {
-        new_components[index] = component;
+    for (components, archetype.components_ids.len..) |comp, index| {
+        new_components[index] = comp;
     }
 
     // overwrites the old entity map record
     try self.addWrapped(entity_id, new_components);
     // we need to get archetype again as it could get realocated if
     // new archetype has been created.
-    var old_archetype = &self.archetypes_v2.items[record.archetype_index];
+    var old_archetype = &self.archetypes.items[record.archetype_index];
     try old_archetype.remove(record.row_id);
 }
 
-pub fn removeComponents(self: *Self, entity_id: EntityId, components: []ComponentId) !void {
+pub fn removeComponents(self: *Self, entity_id: entity.Id, components: []component.Id) !void {
     // find entity
     const record = self.entity_map.get(entity_id) orelse @panic("entity does not exist");
-    const archetype = &self.archetypes_v2.items[record.archetype_index];
+    const archetype = &self.archetypes.items[record.archetype_index];
 
     // sanity check
     for (components) |wrapper| {
@@ -460,7 +451,7 @@ pub fn removeComponents(self: *Self, entity_id: EntityId, components: []Componen
 
     // create table of new components
     var new_components = try self.allocator.alloc(
-        ComponentWrapper,
+        component.Opaque,
         archetype.components_ids.len - components.len,
     );
     defer self.allocator.free(new_components);
@@ -473,7 +464,7 @@ pub fn removeComponents(self: *Self, entity_id: EntityId, components: []Componen
             }
         }
         const ptr = column.getOpaque(record.row_id);
-        const wrapper: ComponentWrapper = .{
+        const wrapper: component.Opaque = .{
             .vtable = column.vtable,
             .pointer = ptr,
         };
@@ -484,26 +475,26 @@ pub fn removeComponents(self: *Self, entity_id: EntityId, components: []Componen
     try self.add(entity_id, new_components);
     // we need to get archetype again as it could get realocated if
     // new archetype has been created.
-    var old_archetype = &self.archetypes_v2.items[record.archetype_index];
+    var old_archetype = &self.archetypes.items[record.archetype_index];
     // only finalize removed components
     old_archetype.finalizeById(record.row_id, self.allocator, components);
     try old_archetype.remove(record.row_id);
 }
 
-fn findOrCreateArchetype(self: *Self, ids: []ComponentId, wrappers: []*const ComponentWrapper.VTable) !*Archetype {
-    const sorted_component_ids = try self.allocator.dupe(ComponentId, ids);
-    std.sort.heap(ComponentId, sorted_component_ids, {}, std.sort.asc(ComponentId));
-    if (self.findExactArchetypeProvidedSorted(assertSorted(ComponentId, sorted_component_ids))) |ptr| {
+fn findOrCreateArchetype(self: *Self, ids: []component.Id, wrappers: []*const component.Opaque.VTable) !*Archetype {
+    const sorted_component_ids = try self.allocator.dupe(component.Id, ids);
+    std.sort.heap(component.Id, sorted_component_ids, {}, std.sort.asc(component.Id));
+    if (self.findExactArchetypeProvidedSorted(assertSorted(component.Id, sorted_component_ids))) |ptr| {
         // did not get stored we have to free them
         self.allocator.free(sorted_component_ids);
         return ptr;
     }
     // sorted_component_ids passed to the archetype, no need to free them.
     // archetype will take ownership of them.
-    return self.createArchetype(assertSorted(ComponentId, sorted_component_ids), ids, wrappers);
+    return self.createArchetype(assertSorted(component.Id, sorted_component_ids), ids, wrappers);
 }
 
-fn findExactArchetypeProvidedSorted(self: *Self, ids: []const ComponentId) ?*Archetype {
+fn findExactArchetypeProvidedSorted(self: *Self, ids: []const component.Id) ?*Archetype {
     outer: for (self.components_per_archetype.items, 0..) |components, archetype_idx| {
         if (components.len != ids.len) {
             continue;
@@ -513,15 +504,20 @@ fn findExactArchetypeProvidedSorted(self: *Self, ids: []const ComponentId) ?*Arc
                 continue :outer;
             }
         }
-        return &self.archetypes_v2.items[archetype_idx];
+        return &self.archetypes.items[archetype_idx];
     }
     return null;
 }
 
-fn createArchetype(self: *Self, sorted_component_ids: []const ComponentId, ids: []const ComponentId, wrappers: []*const ComponentWrapper.VTable) !*Archetype {
+fn createArchetype(
+    self: *Self,
+    sorted_component_ids: []const component.Id,
+    ids: []const component.Id,
+    wrappers: []*const component.Opaque.VTable,
+) !*Archetype {
     // creating archetype invalidates cache
     self.invalidateCache();
-    const archetype_index = self.archetypes_v2.items.len;
+    const archetype_index = self.archetypes.items.len;
     const new = try Archetype.init(
         self.allocator,
         archetype_index,
@@ -529,9 +525,9 @@ fn createArchetype(self: *Self, sorted_component_ids: []const ComponentId, ids: 
         ids,
         wrappers,
     );
-    try self.archetypes_v2.append(self.allocator, new);
+    try self.archetypes.append(self.allocator, new);
     try self.components_per_archetype.append(self.allocator, sorted_component_ids);
-    return &self.archetypes_v2.items[self.archetypes_v2.items.len - 1];
+    return &self.archetypes.items[self.archetypes.items.len - 1];
 }
 
 pub fn query(self: *Self, comptime comps: anytype, comptime exclude: anytype) QueryIter(comps) {
@@ -540,46 +536,46 @@ pub fn query(self: *Self, comptime comps: anytype, comptime exclude: anytype) Qu
         @compileError("query accepts a tuple of types");
     }
     const infoStruct = info.@"struct";
-    var componentIds: [infoStruct.fields.len]ComponentId = undefined;
-    inline for (comps, 0..) |component, index| {
-        const tinfo = @typeInfo(@TypeOf(component));
+    var componentIds: [infoStruct.fields.len]component.Id = undefined;
+    inline for (comps, 0..) |comp, index| {
+        const tinfo = @typeInfo(@TypeOf(comp));
         if (tinfo != .type) {
             @compileError("query accepts a typle of types");
         }
-        componentIds[index] = utils.typeId(component);
+        componentIds[index] = utils.typeId(comp);
     }
-    std.sort.heap(ComponentId, &componentIds, {}, std.sort.asc(ComponentId));
-    _ = assertSorted(ComponentId, &componentIds);
+    std.sort.heap(component.Id, &componentIds, {}, std.sort.asc(component.Id));
+    _ = assertSorted(component.Id, &componentIds);
 
     const info_exclude = @typeInfo(@TypeOf(exclude));
     if (info_exclude != .@"struct" and !info_exclude.@"struct".is_tuple) {
         @compileError("query accepts a tuple of types");
     }
     const infoStructExclude = info.@"struct";
-    var excludeIds: [infoStructExclude.fields.len]ComponentId = undefined;
-    inline for (exclude, 0..) |component, index| {
-        const tinfo = @typeInfo(@TypeOf(component));
+    var excludeIds: [infoStructExclude.fields.len]component.Id = undefined;
+    inline for (exclude, 0..) |comp, index| {
+        const tinfo = @typeInfo(@TypeOf(comp));
         if (tinfo != .type) {
             @compileError("query accepts a typle of types");
         }
-        excludeIds[index] = utils.typeId(component);
+        excludeIds[index] = utils.typeId(comp);
     }
-    std.sort.heap(ComponentId, &excludeIds, {}, std.sort.asc(ComponentId));
-    _ = assertSorted(ComponentId, &excludeIds);
+    std.sort.heap(component.Id, &excludeIds, {}, std.sort.asc(component.Id));
+    _ = assertSorted(component.Id, &excludeIds);
 
     const cache: []const usize = self.lookupQueryHash(&componentIds, &excludeIds) catch @panic("could not build cache");
     return QueryIter(comps).init(self, componentIds, cache);
 }
 
-pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclude_ids: Sorted([]ComponentId)) ![]const usize {
+pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]component.Id), exclude_ids: Sorted([]component.Id)) ![]const usize {
     self.mutex.lock();
     defer self.mutex.unlock();
     const query_hash = fnv1a64(component_ids, exclude_ids);
     if (self.queries_hash.get(query_hash)) |cache_entries| {
         // found in cache
         for (cache_entries.items) |entry| {
-            if (std.mem.eql(ComponentId, entry.components, component_ids)) {
-                if (std.mem.eql(ComponentId, entry.exclude, exclude_ids)) {
+            if (std.mem.eql(component.Id, entry.components, component_ids)) {
+                if (std.mem.eql(component.Id, entry.exclude, exclude_ids)) {
                     return entry.archetypes;
                 }
             }
@@ -588,14 +584,14 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclud
     // not found, needs to recalculate cache
     var cache = std.ArrayList(usize).empty;
     var next_archetype: usize = 0;
-    while (next_archetype < self.archetypes_v2.items.len) {
+    while (next_archetype < self.archetypes.items.len) {
         const archetype_comps = self.components_per_archetype.items[next_archetype];
         if (!utils.isSubset(component_ids, archetype_comps)) {
             // not a subset, check next archetype
             next_archetype += 1;
             continue;
         }
-        if (std.mem.indexOfAny(ComponentId, archetype_comps, exclude_ids)) |_| {
+        if (std.mem.indexOfAny(component.Id, archetype_comps, exclude_ids)) |_| {
             next_archetype += 1;
             continue;
         }
@@ -605,8 +601,8 @@ pub fn lookupQueryHash(self: *Self, component_ids: Sorted([]ComponentId), exclud
     const asSlice = try cache.toOwnedSlice(self.allocator);
     const cache_entry = CacheEntry{
         .archetypes = asSlice,
-        .exclude = try self.allocator.dupe(ComponentId, exclude_ids),
-        .components = try self.allocator.dupe(ComponentId, component_ids),
+        .exclude = try self.allocator.dupe(component.Id, exclude_ids),
+        .components = try self.allocator.dupe(component.Id, component_ids),
     };
     const entry_ptr = self.queries_hash.getPtr(query_hash);
     if (entry_ptr) |ptr| {
@@ -627,7 +623,12 @@ pub const DynamicScopeOptions = struct {
 /// Scope has to be freed after the query has been used.
 ///
 /// Does not take ownership of the components slice. It has be the freed by the caller.
-pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, exclude: []const ComponentId, options: DynamicScopeOptions) !DynamicQueryScope {
+pub fn dynamicQueryScope(
+    self: *Self,
+    components: []const component.Id,
+    exclude: []const component.Id,
+    options: DynamicScopeOptions,
+) !DynamicQueryScope {
     const allocator = options.allocator orelse self.allocator;
     return .init(self, components, exclude, allocator);
 }
@@ -635,10 +636,10 @@ pub fn dynamicQueryScope(self: *Self, components: []const ComponentId, exclude: 
 pub fn deinit(self: *Self) void {
     self.components_per_archetype.deinit(self.allocator);
     self.entity_map.deinit();
-    for (self.archetypes_v2.items) |*archetype| {
+    for (self.archetypes.items) |*archetype| {
         archetype.deinit(self.allocator);
     }
-    self.archetypes_v2.deinit(self.allocator);
+    self.archetypes.deinit(self.allocator);
     self.invalidateCache();
     self.queries_hash.deinit();
 }

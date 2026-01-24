@@ -4,7 +4,7 @@ const std = @import("std");
 const lua = @import("lua_lib");
 const ecs = @import("../root.zig");
 
-const ComponentId = ecs.component.ComponentId;
+const ComponentId = ecs.component.Id;
 const Game = ecs.Game;
 const DynamicScope = ecs.game.JoinedDynamicScope;
 const DynamicQuery = ecs.game.DynamicQuery;

@@ -1,4 +1,4 @@
-const Component = @import("../root.zig").Component;
+const ecs = @import("../prelude.zig");
 
 pub const Size = struct {
     width: i32,
@@ -6,7 +6,7 @@ pub const Size = struct {
 };
 
 pub const WindowOptions = struct {
-    pub const component_info = Component(WindowOptions);
+    pub const component_info = ecs.Component(WindowOptions);
 
     title: [:0]const u8,
     size: Size,

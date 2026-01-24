@@ -4,7 +4,7 @@ pub const scene = @import("scene.zig");
 pub const utils = @import("utils.zig");
 pub const runtime = @import("runtime/runtime.zig");
 pub const core = @import("core/core.zig");
-pub const lua = @import("lua_interop/root.zig");
+pub const lua = @import("lua_interop/lua_interop.zig");
 
 pub const raylib = @import("raylib/raylib.zig");
 pub const entity = @import("entity.zig");
@@ -19,7 +19,7 @@ pub const Component = component.Component;
 pub const Game = game.Game;
 pub const Query = game.Query;
 pub const Scene = scene.Scene;
-pub const EntityId = entity.EntityId;
+pub const EntityId = entity.Id;
 pub const Resource = @import("resource.zig").Resource;
 
 pub const system_mod = @import("system.zig");
@@ -29,8 +29,4 @@ pub const system = system_mod.system;
 pub const lua_script = lua.script;
 pub const ExportLua = lua.export_component.ExportLua;
 
-pub const Marker = struct {
-    marker: usize = 0,
-
-    pub const empty: Marker = .{};
-};
+pub const Marker = @import("marker.zig");
