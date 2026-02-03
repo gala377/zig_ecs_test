@@ -15,6 +15,8 @@ const RaylibSchedule = ecs.raylib.RaylibSchedule;
 
 const ZguiSchedule = struct {};
 
+const editor = @import("editor.zig");
+
 pub fn install(game: *Game) !void {
     try game.schedule.addScheduleAfter(
         .setup,
@@ -42,20 +44,14 @@ pub fn install(game: *Game) !void {
     try game.addSystemToSchedule(.pre_render, ZguiSchedule{}, zguiBegin);
     try game.addSystemToSchedule(.post_render, ZguiSchedule{}, zguiEnd);
     try game.addSystemToSchedule(.close, ZguiSchedule{}, deinitZgui);
+    try game.addSystem(.render, editor.allEntities);
 }
 
 fn zguiBegin() void {
     ri.rlImGuiBegin();
-    _ = zgui.begin("please", .{});
-    zgui.beginGroup();
-    for (0..10) |idx| {
-        zgui.bulletText("TEXT {any}", .{idx});
-    }
-    zgui.endGroup();
 }
 
 fn zguiEnd() void {
-    zgui.end();
     ri.rlImGuiEnd();
 }
 

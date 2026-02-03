@@ -475,7 +475,7 @@ fn setup_circle(commands: Commands) void {
 fn move_player_marker(player: *Query(.{ PlayerMarker, Position })) void {
     while (player.next()) |components| {
         _, const position: *Position = components;
-        position.x += 1.0;
+        position.x -= 1.0;
     }
 }
 
