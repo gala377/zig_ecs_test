@@ -9,13 +9,6 @@ const component = ecs.component;
 const LuaVTable = ecs.lua.export_component.VTable;
 const EntityStorage = ecs.EntityStorage;
 
-/// A bunch of vtables that can be used to operate on
-/// opaque pointer of appropriate type
-pub const VTable = struct {
-    component: ?*const component.Opaque.VTable,
-    lua: ?*const LuaVTable,
-};
-
 pub const OpaqueSelf = anyopaque;
 
 pub const ReflectedAny = struct {
@@ -58,6 +51,8 @@ pub const ReflectionMetaData = struct {
     deref: ?*const fn (*OpaqueSelf) ReflectedAny,
     /// If pointer can be used to set underlying memory
     ref: ?*const fn (*OpaqueSelf, ReflectedAny) void,
+    /// component vtable if any
+    component_vtable: ?*const component.Opaque.VTable,
 };
 
 pub const TypeRegistry = struct {
@@ -90,6 +85,7 @@ pub const TypeRegistry = struct {
             .deref = deref(T),
             .set = simpleValueSetter(T),
             .fields = &.{},
+            .component_vtable = null,
         });
     }
 
@@ -110,6 +106,7 @@ pub const TypeRegistry = struct {
             .deref = null,
             .ref = null,
             .set = simpleValueSetter([]const u8),
+            .component_vtable = null,
             .fields = try self.allocator.dupe(ReflectionField, &.{
                 .{
                     .name = "len",
@@ -131,6 +128,7 @@ pub const TypeRegistry = struct {
             .call = null,
             .deref = null,
             .ref = null,
+            .component_vtable = null,
         });
         try self.registerPointer(*T);
     }
@@ -176,6 +174,10 @@ fn structMetaData(comptime T: type, allocator: std.mem.Allocator) !ReflectionMet
         };
     }
     const fields_heaped = try allocator.dupe(ReflectionField, &reflected_fields);
+    const component_vtable: ?*const component.Opaque.VTable = if (comptime @hasDecl(T, "component_info"))
+        component.vtableOf(T)
+    else
+        null;
     return .{
         .name = @typeName(T),
         .fields = fields_heaped,
@@ -185,6 +187,7 @@ fn structMetaData(comptime T: type, allocator: std.mem.Allocator) !ReflectionMet
         .call = null,
         .deref = null,
         .ref = null,
+        .component_vtable = component_vtable,
     };
 }
 
