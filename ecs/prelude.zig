@@ -14,6 +14,7 @@ pub const core = @import("core/core.zig");
 pub const imgui = @import("imgui/imgui.zig");
 pub const raylib = @import("raylib/raylib.zig");
 pub const lua = @import("lua_interop/lua_interop.zig");
+pub const type_registry = @import("type_registry.zig");
 
 pub const Schedule = @import("schedule.zig");
 pub const EntityStorage = @import("entity_storage.zig");
@@ -23,6 +24,7 @@ pub const Game = game.Game;
 pub const Query = game.Query;
 pub const Resource = resource.Resource;
 pub const Scene = scene.Scene;
+pub const TypeRegistry = type_registry.TypeRegistry;
 
 pub fn Component(comptime T: type) component.MetaData(
     T,

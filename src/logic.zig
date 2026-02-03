@@ -63,6 +63,13 @@ pub fn install(game: *Game) !void {
         \\  end
         \\ end
     );
+    try game.type_registry.registerStruct(Foo);
+    try game.type_registry.registerStruct(Bar);
+    ecs.type_registry.printReflected(
+        &game.type_registry,
+        ecs.utils.typeId(Foo),
+        0,
+    );
 
     const open_title: [:0]u8 = try game.allocator.dupeZ(u8, "Open");
     const close_title: [:0]u8 = try game.allocator.dupeZ(u8, "Close");

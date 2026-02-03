@@ -9,6 +9,7 @@ pub const lua = @import("lua_interop/lua_interop.zig");
 pub const raylib = @import("raylib/raylib.zig");
 pub const entity = @import("entity.zig");
 pub const game = @import("game.zig");
+pub const type_registry = @import("type_registry.zig");
 pub const schedule = @import("schedule.zig");
 
 pub const commands = @import("runtime/commands.zig");

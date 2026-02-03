@@ -16,6 +16,7 @@
 
 - type registry 
   - needed for [[#Exposing constructors to lua]]
+  - needed for editor
 - lua dispatch to zig 
   - some way to easily expose functions to lua, we have yield-dispatch now we 
     need to have easy way to add new functions to it

@@ -31,6 +31,7 @@ const Resource = ecs.Resource;
 const GameActions = runtime.game_actions;
 const LuaRuntime = runtime.lua_runtime;
 const commands = runtime.commands;
+const TypeRegistry = ecs.TypeRegistry;
 
 pub const BuildOptions = struct {
     generate_lua_stub_files: bool = false,
@@ -58,18 +59,6 @@ const SimpleIdProvider = struct {
             .nextFn = @ptrCast(&next),
         };
     }
-
-    pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
-        const self: *SimpleIdProvider = @ptrCast(@alignCast(clua.lua_touserdata(state, clua.lua_upvalueindex(1))));
-        clua.lua_pushinteger(state, @intCast(self.next()));
-        return 1;
-    }
-
-    pub fn exportIdFunction(self: *SimpleIdProvider, state: *clua.lua_State) void {
-        clua.lua_pushlightuserdata(state, @ptrCast(self));
-        clua.lua_pushcclosure(state, @ptrCast(&luaNext), 1);
-        clua.lua_setglobal(state, "newUniqueInteger");
-    }
 };
 
 pub const Game = struct {
@@ -88,32 +77,31 @@ pub const Game = struct {
     should_close: bool,
     current_scene: ?Scene,
 
-    idprovider: *SimpleIdProvider,
+    idprovider: SimpleIdProvider,
 
     schedule: Schedule,
 
     global_entity_storage: EntityStorage,
-    vtable_storage: *VTableStorage,
+    vtable_storage: VTableStorage,
+    type_registry: TypeRegistry,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
-        const state = try lua.State.init(allocator);
-        const id_provider = try allocator.create(SimpleIdProvider);
-        id_provider.* = SimpleIdProvider{
-            .inner = .init(1),
-        };
-        const vtable_storage = try allocator.create(VTableStorage);
-        vtable_storage.* = VTableStorage.init(allocator);
         return .{
             .allocator = allocator,
-            .lua_state = state,
+            .lua_state = try .init(allocator),
             .should_close = false,
             .options = options,
             .current_scene = null,
             .global_entity_storage = try EntityStorage.init(allocator),
-            .idprovider = id_provider,
-            .vtable_storage = vtable_storage,
+            .idprovider = .{
+                // skip 0 as this is special id used to
+                // indentify persistant entities (global entities)
+                .inner = .init(1),
+            },
+            .vtable_storage = .init(allocator),
             .frame_allocator = .init(std.heap.c_allocator),
             .schedule = Schedule.init(allocator),
+            .type_registry = .init(allocator),
         };
     }
 
@@ -149,6 +137,7 @@ pub const Game = struct {
     /// TODO: Runtime and core split doesn't make much sense honestly.
     /// I think with things like Commands it makes sense but not much more honestly.
     pub fn installRuntime(self: *Self) !void {
+        try self.type_registry.registerStdTypes();
         try self.schedule.addDefaultSchedule();
         try self.addResource(runtime.allocators.GlobalAllocator{
             .allocator = self.allocator,
@@ -494,13 +483,13 @@ pub const Game = struct {
             scene.deinit();
         }
         self.global_entity_storage.deinit();
-        // INFO: components may hold references to lua so we need to
-        // dealloc it last
+        // components may hold references to lua so we need to
+        // dealloc lua runtime after components
         self.lua_state.deinit();
-        self.allocator.destroy(self.idprovider);
+
         self.vtable_storage.deinit();
-        self.allocator.destroy(self.vtable_storage);
         self.frame_allocator.deinit();
+        self.type_registry.deinit();
     }
 
     pub fn newId(self: *Self) usize {
@@ -526,7 +515,6 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.win
         game.exportComponent(core.Position);
         game.exportComponent(core.Style);
         game.exportComponent(core.Color);
-        game.idprovider.exportIdFunction(@ptrCast(game.lua_state.state));
         DynamicQuery.registerMetaTable(game.lua_state);
     }
 }

@@ -15,6 +15,13 @@ pub fn ExportOptions(comptime T: type) type {
     };
 }
 
+pub const VTable = struct {
+    // pushes this value to lua
+    luaPush: *const fn (*anyopaque, *clua.lua_State, std.mem.Allocator) void,
+    // creates value of this type from lua
+    fromLua: *const fn (*clua.lua_State, std.mem.Allocator) *anyopaque,
+};
+
 pub fn SliceProxy(comptime Slice: type) type {
     const info = @typeInfo(Slice);
     if (comptime info != .pointer and info.pointer.size != .slice) {

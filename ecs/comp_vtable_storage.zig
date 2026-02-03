@@ -1,5 +1,8 @@
-const component = @import("prelude.zig").component;
 const std = @import("std");
+const ecs = @import("prelude.zig");
+
+const component = ecs.component;
+const lua = ecs.lua.export_component;
 
 allocator: std.mem.Allocator,
 name_to_id: std.StringHashMap(u64),
