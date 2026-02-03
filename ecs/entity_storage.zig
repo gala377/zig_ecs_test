@@ -164,13 +164,7 @@ pub const Archetype = struct {
     // This has to be one by the caller.
     pub fn add(self: *@This(), allocator: std.mem.Allocator, components: []const component.Opaque) !usize {
         const index = try self.allocate(allocator);
-        for (components) |comp| {
-            const component_id = comp.component_id;
-            const column_index = self.components_map.get(component_id) orelse unreachable;
-            const pointer_many: [*]const u8 = @ptrCast(@alignCast(comp.pointer));
-            const pointer: []const u8 = pointer_many[0..comp.vtable.size];
-            self.components.items[column_index].insertAtUnchecked(index, component_id, pointer);
-        }
+        self.insertUncheked(index, components);
         return index;
     }
 

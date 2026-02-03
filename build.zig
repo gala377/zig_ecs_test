@@ -30,6 +30,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     ecs_mod.addImport("lua_lib", lib_mod);
+    buildAndLinkImgui(b, ecs_mod);
 
     const ecs_options = b.addOptions();
     ecs_options.addOption([]const u8, "components_prefix", "ecs");
@@ -170,4 +171,26 @@ fn buildRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         .artifact = raylib_artifact,
         .b = b,
     };
+}
+
+fn buildAndLinkImgui(
+    b: *std.Build,
+    to: *std.Build.Module,
+) void {
+    const zgui = b.dependency("zgui", .{
+        .shared = false,
+        .with_implot = true,
+    });
+    to.addImport("zgui", zgui.module("root"));
+    to.linkLibrary(zgui.artifact("imgui"));
+    to.addIncludePath(zgui.path("libs/imgui"));
+    to.addIncludePath(b.path("libs/rlImGui"));
+    to.addCSourceFile(
+        .{
+            .file = b.path("libs/rlImGui/rlImGui.cpp"),
+            .flags = &.{"-std=c++11"},
+        },
+    );
+    to.link_libc = true;
+    to.link_libcpp = true;
 }

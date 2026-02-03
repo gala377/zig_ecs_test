@@ -1,6 +1,10 @@
 const std = @import("std");
 const rg = @import("raygui");
 const rl = @import("raylib");
+// Import the C glue
+const ri = @cImport({
+    @cInclude("rlImGui.h");
+});
 const ecs = @import("../prelude.zig");
 
 const core = ecs.core;
@@ -21,14 +25,14 @@ pub const RaylibSchedule = struct {};
 
 pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
     // define raylib schedules
-    try game.schedule.addSchedule(.pre_render, RaylibSchedule{}, .{});
-    try game.schedule.addSchedule(.update, RaylibSchedule{}, .{
-        DefaultSchedule,
+    try game.schedule.addScheduleAfter(.pre_render, RaylibSchedule{}, .{});
+    try game.schedule.addScheduleAfter(.update, RaylibSchedule{}, .{
+        DefaultSchedule{},
     });
-    try game.schedule.addSchedule(.setup, RaylibSchedule{}, .{});
-    try game.schedule.addSchedule(.render, RaylibSchedule{}, .{});
-    try game.schedule.addSchedule(.post_render, RaylibSchedule{}, .{});
-    try game.schedule.addSchedule(.tear_down, RaylibSchedule{}, .{});
+    try game.schedule.addScheduleAfter(.setup, RaylibSchedule{}, .{});
+    try game.schedule.addScheduleAfter(.render, RaylibSchedule{}, .{});
+    try game.schedule.addScheduleAfter(.post_render, RaylibSchedule{}, .{});
+    try game.schedule.addScheduleAfter(.tear_down, RaylibSchedule{}, .{});
 
     try game.addResource(options);
     try game.addSystemToSchedule(.setup, RaylibSchedule{}, initWindow);
@@ -48,6 +52,7 @@ pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
     if (show_fps) {
         try game.addSystemToSchedule(.render, RaylibSchedule{}, showFps);
     }
+    try game.addSystemToSchedule(.render, RaylibSchedule{}, allEntities);
 }
 
 fn initWindow(window_options: Resource(WindowOptions)) void {
@@ -65,10 +70,10 @@ fn initWindow(window_options: Resource(WindowOptions)) void {
 
 fn beginDraw() void {
     rl.beginDrawing();
+    rl.clearBackground(.black);
 }
 
 fn endDraw() void {
-    rl.clearBackground(.black);
     rl.endDrawing();
 }
 
@@ -146,6 +151,66 @@ pub fn imguiButtons(buttons: *Query(.{imgui.components.Button})) void {
             button.clicked = true;
         } else {
             button.clicked = false;
+        }
+    }
+}
+
+fn allEntities(game: *Game) void {
+    const sw = @as(f32, @floatFromInt(rl.getScreenWidth()));
+    const sh = @as(f32, @floatFromInt(rl.getScreenHeight()));
+
+    const panel_width = 200.0;
+    const panel_rect = rl.Rectangle{
+        .x = sw - panel_width,
+        .y = 0,
+        .width = panel_width,
+        .height = sh,
+    };
+    _ = rg.panel(panel_rect, "entities");
+    const start_x = panel_rect.x + 10.0;
+    const start_y = 40.0; // Start below the panel title bar
+    const line_height = 25.0;
+    const type_registry = &game.type_registry;
+    const archetypes = game.current_scene.?.entity_storage.archetypes;
+    const padding = 10.0;
+    var draw_index: usize = 0;
+    for (archetypes.items) |*archetype| {
+        for (0..archetype.capacity) |entity_index| {
+            if (archetype.freelist.contains(entity_index)) {
+                continue;
+            }
+            const y_pos = start_y + (@as(f32, @floatFromInt(draw_index)) * line_height);
+            _ = rg.label(.{
+                .x = start_x,
+                .y = y_pos,
+                .width = panel_width - (padding * 2),
+                .height = 20,
+            }, "ENTITY:");
+            draw_index += 1;
+            for (archetype.components.items) |*column| {
+                const comp_y_pos = start_y + (@as(f32, @floatFromInt(draw_index)) * line_height);
+                const component_id = column.component_id;
+                const metadata = type_registry.metadata.get(component_id);
+                if (metadata) |meta| {
+                    const name = meta.name;
+                    const duped = game.allocator.dupeZ(u8, name) catch @panic("could not allocate memory");
+                    defer game.allocator.free(duped);
+                    _ = rg.label(.{
+                        .x = start_x + padding,
+                        .y = comp_y_pos,
+                        .width = panel_width - (padding * 2),
+                        .height = 20,
+                    }, duped);
+                } else {
+                    _ = rg.label(.{
+                        .x = start_x + padding,
+                        .y = comp_y_pos,
+                        .width = panel_width - (padding * 2),
+                        .height = 20,
+                    }, "Unknown component");
+                }
+                draw_index += 1;
+            }
         }
     }
 }

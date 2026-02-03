@@ -15,6 +15,7 @@ pub const imgui = @import("imgui/imgui.zig");
 pub const raylib = @import("raylib/raylib.zig");
 pub const lua = @import("lua_interop/lua_interop.zig");
 pub const type_registry = @import("type_registry.zig");
+pub const zgui = @import("zgui/zgui.zig");
 
 pub const Schedule = @import("schedule.zig");
 pub const EntityStorage = @import("entity_storage.zig");

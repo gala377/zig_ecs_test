@@ -16,6 +16,7 @@ pub const Phase = enum {
     render,
     post_render,
     tear_down,
+    close,
 };
 
 pub const DefaultSchedule = struct {};
@@ -51,6 +52,8 @@ post_render_systems: std.ArrayList(Schedule),
 
 tear_down_systems: std.ArrayList(Schedule),
 
+close_systems: std.ArrayList(Schedule),
+
 allocator: std.mem.Allocator,
 
 pub fn init(allocator: std.mem.Allocator) Self {
@@ -62,6 +65,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
         .render_systems = .empty,
         .post_render_systems = .empty,
         .tear_down_systems = .empty,
+        .close_systems = .empty,
         .allocator = allocator,
     };
 }
@@ -69,11 +73,46 @@ pub fn init(allocator: std.mem.Allocator) Self {
 pub fn addDefaultSchedule(self: *Self) !void {
     std.debug.print("adding default schedules\n", .{});
     inline for (@typeInfo(Phase).@"enum".fields) |f| {
-        try self.addSchedule(@enumFromInt(f.value), DefaultSchedule{}, .{});
+        try self.addScheduleAfter(@enumFromInt(f.value), DefaultSchedule{}, .{});
     }
 }
 
-pub fn addSchedule(self: *Self, phase: Phase, label: anytype, after: anytype) !void {
+pub fn addScheduleBefore(self: *Self, phase: Phase, label: anytype, before: anytype) !void {
+    const after_info = @typeInfo(@TypeOf(before));
+    const fields = after_info.@"struct".fields;
+    var before_ids: [fields.len]ScheduleId = undefined;
+    inline for (before, 0..) |schedule, idx| {
+        before_ids[idx] = utils.typeId(@TypeOf(schedule));
+    }
+    const phase_schedules = self.getPhase(phase);
+    var min: ?usize = null;
+    for (phase_schedules.items, 0..) |*schedule, idx| {
+        for (before_ids) |schedule_id| {
+            if (schedule_id == schedule.identifier) {
+                if (min) |inner| {
+                    min = @min(inner, idx);
+                } else {
+                    min = idx;
+                }
+            }
+        }
+    }
+    const new_schedule = Schedule{
+        .identifier = utils.typeId(@TypeOf(label)),
+        .systems = .empty,
+    };
+    std.debug.print("created schedule {s}::{s} with id {any}\n", .{
+        @tagName(phase), @typeName(@TypeOf(label)), new_schedule.identifier,
+    });
+    if (min) |inner| {
+        try phase_schedules.insert(self.allocator, inner, new_schedule);
+    } else {
+        // we can put it anywhere
+        try phase_schedules.append(self.allocator, new_schedule);
+    }
+}
+
+pub fn addScheduleAfter(self: *Self, phase: Phase, label: anytype, after: anytype) !void {
     const after_info = @typeInfo(@TypeOf(after));
     const fields = after_info.@"struct".fields;
     var after_ids: [fields.len]ScheduleId = undefined;
@@ -151,6 +190,7 @@ fn getPhase(self: *Self, phase: Phase) *std.ArrayList(Schedule) {
         .render => &self.render_systems,
         .post_render => &self.post_render_systems,
         .tear_down => &self.tear_down_systems,
+        .close => &self.close_systems,
     };
 }
 

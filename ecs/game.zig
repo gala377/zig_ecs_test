@@ -132,6 +132,7 @@ pub const Game = struct {
 
             self.schedule.runPhase(.tear_down, self);
         }
+        self.schedule.runPhase(.close, self);
     }
 
     /// TODO: Runtime and core split doesn't make much sense honestly.
@@ -505,6 +506,7 @@ pub const Game = struct {
 /// Convienience function that adds the most important plugins.
 pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.window.WindowOptions) !void {
     try raylib.install(game, window_options, true);
+    try ecs.zgui.install(game);
     try game.addResource(LuaRuntime{ .lua = &game.lua_state });
     if (export_lua) {
         // TODO: this one is weird as we add game actions in the runtime

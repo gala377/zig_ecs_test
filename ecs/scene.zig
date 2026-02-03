@@ -42,7 +42,7 @@ pub const Scene = struct {
             .entity_id = id,
         };
         const with_id = .{entity_id} ++ comps;
-        try self.entity_storage.add(id, with_id);
+        try self.entity_storage.add(entity_id, with_id);
         return entity_id;
     }
 

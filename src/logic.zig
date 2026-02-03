@@ -65,6 +65,16 @@ pub fn install(game: *Game) !void {
     );
     try game.type_registry.registerStruct(Foo);
     try game.type_registry.registerStruct(Bar);
+    try game.type_registry.registerStruct(ecs.Marker);
+    try game.type_registry.registerStruct(PlayerMarker);
+    try game.type_registry.registerStruct(ButtonOpen);
+    try game.type_registry.registerStruct(ButtonClose);
+    try game.type_registry.registerStruct(RunOnce);
+    try game.type_registry.registerStruct(ButtonSpawn);
+    try game.type_registry.registerStruct(ButtonAddCircle);
+    try game.type_registry.registerStruct(ButtonAddPlayer);
+    try game.type_registry.registerStruct(ButtonLua);
+
     ecs.type_registry.printReflected(
         &game.type_registry,
         ecs.utils.typeId(Foo),
@@ -152,9 +162,7 @@ pub fn install(game: *Game) !void {
     const foo: Foo = .{
         .bar = bar,
     };
-    _ = try game.newGlobalEntity(.{
-        foo,
-    });
+    _ = try game.current_scene.?.newEntity(.{foo});
 
     std.debug.print("adding event\n", .{});
     try game.addEvent(MyEvent);
