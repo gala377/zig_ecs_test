@@ -173,6 +173,7 @@ pub fn intoSystem(self: Self) !System {
     const alloc = try self.allocator.create(Self);
     alloc.* = self;
     return .{
+        .name = "lua",
         .context = @ptrCast(alloc),
         .vtable = &.{
             .run = &systemRun,

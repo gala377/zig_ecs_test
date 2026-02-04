@@ -25,6 +25,7 @@ pub const ScheduleId = usize;
 
 pub const Schedule = struct {
     identifier: ScheduleId,
+    name: []const u8,
     systems: std.ArrayList(System),
 
     pub fn run(self: *const @This(), game: *Game) void {
@@ -98,6 +99,7 @@ pub fn addScheduleBefore(self: *Self, phase: Phase, label: anytype, before: anyt
         }
     }
     const new_schedule = Schedule{
+        .name = @typeName(@TypeOf(label)),
         .identifier = utils.typeId(@TypeOf(label)),
         .systems = .empty,
     };
@@ -133,6 +135,7 @@ pub fn addScheduleAfter(self: *Self, phase: Phase, label: anytype, after: anytyp
         }
     }
     const new_schedule = Schedule{
+        .name = @typeName(@TypeOf(label)),
         .identifier = utils.typeId(@TypeOf(label)),
         .systems = .empty,
     };
@@ -181,7 +184,7 @@ pub fn deinitPhase(self: *Self, phase: Phase) void {
     systems.deinit(self.allocator);
 }
 
-fn getPhase(self: *Self, phase: Phase) *std.ArrayList(Schedule) {
+pub fn getPhase(self: *Self, phase: Phase) *std.ArrayList(Schedule) {
     return switch (phase) {
         .setup => &self.setup_systems,
         .update => &self.update_systems,

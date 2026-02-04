@@ -87,3 +87,38 @@ fn printFromArchetype(
         }
     }
 }
+
+pub fn allSystems(game: *Game) void {
+    const schedule: *ecs.Schedule = &game.schedule;
+    if (zgui.begin("systems", .{})) {
+        printPhase(.setup, schedule, game.allocator);
+        printPhase(.update, schedule, game.allocator);
+        printPhase(.pre_render, schedule, game.allocator);
+        printPhase(.render, schedule, game.allocator);
+        printPhase(.post_render, schedule, game.allocator);
+        printPhase(.tear_down, schedule, game.allocator);
+        printPhase(.close, schedule, game.allocator);
+    }
+    zgui.end();
+}
+
+fn printPhase(phase: ecs.Schedule.Phase, schedule: *ecs.Schedule, allocator: std.mem.Allocator) void {
+    const schedules = schedule.getPhase(phase);
+    zgui.pushIntId(@intFromEnum(phase));
+    if (zgui.treeNode(@tagName(phase))) {
+        for (schedules.items, 0..) |schdl, idx| {
+            zgui.pushIntId(@intCast(idx + 100));
+            const headerName = allocator.dupeZ(u8, schdl.name) catch @panic("oom");
+            defer allocator.free(headerName);
+            if (zgui.treeNode(headerName)) {
+                for (schdl.systems.items) |system| {
+                    zgui.bulletText("{s}", .{system.name});
+                }
+                zgui.treePop();
+            }
+            zgui.popId();
+        }
+        zgui.treePop();
+    }
+    zgui.popId();
+}

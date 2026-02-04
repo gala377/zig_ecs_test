@@ -123,6 +123,7 @@ pub fn eventSystem(comptime T: type) System {
         }
     }.call;
     return .{
+        .name = "event(" ++ @typeName(T) ++ ")",
         .context = null,
         .vtable = &.{
             .deinit = &ignore,

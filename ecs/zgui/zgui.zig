@@ -45,6 +45,7 @@ pub fn install(game: *Game) !void {
     try game.addSystemToSchedule(.post_render, ZguiSchedule{}, zguiEnd);
     try game.addSystemToSchedule(.close, ZguiSchedule{}, deinitZgui);
     try game.addSystem(.render, editor.allEntities);
+    try game.addSystem(.render, editor.allSystems);
 }
 
 fn zguiBegin() void {

@@ -13,6 +13,8 @@ pub const SystemVTable = struct {
 pub const System = struct {
     const Self = @This();
 
+    // should be static
+    name: []const u8,
     context: ?*anyopaque,
     vtable: *const SystemVTable,
 
@@ -43,6 +45,7 @@ pub const System = struct {
         }.run;
 
         return .{
+            .name = "run_if",
             .context = @ptrCast(@alignCast(context)),
             .vtable = &.{
                 .run = &run_impl,
@@ -91,6 +94,7 @@ pub fn chain(allocator: std.mem.Allocator, systems: []const System) !System {
         .allocator = allocator,
     };
     return .{
+        .name = "chain",
         .context = @ptrCast(@alignCast(context)),
         .vtable = &.{
             .deinit = &ChainContext.deinit,
@@ -105,6 +109,7 @@ fn ignore(context: ?*anyopaque) void {
 
 pub fn system(comptime F: anytype) System {
     return .{
+        .name = @typeName(@TypeOf(F)),
         .context = null,
         .vtable = &.{
             .deinit = &ignore,
@@ -221,6 +226,7 @@ pub fn concurrent(allocator: std.mem.Allocator, systems: []const System) !System
         .allocator = allocator,
     };
     return .{
+        .name = "concurrent",
         .context = @ptrCast(@alignCast(context)),
         .vtable = &.{
             .deinit = &ConcurrentContext.deinit,
