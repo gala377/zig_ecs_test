@@ -44,7 +44,7 @@ fn printFromArchetype(
         0,
     ) catch @panic("oom");
     defer allocator.free(group_label);
-    if (zgui.collapsingHeader(group_label, .collapsing_header)) {
+    if (zgui.treeNode(group_label)) {
         for (archetypes) |*archetype| {
             for (0..archetype.capacity) |entity_index| {
                 if (archetype.freelist.contains(entity_index)) {
@@ -67,23 +67,71 @@ fn printFromArchetype(
                     0,
                 ) catch @panic("could not allocate memory");
                 defer allocator.free(entity_label);
-                if (zgui.collapsingHeader(entity_label, .collapsing_header)) {
-                    zgui.indent(.{});
+                if (zgui.treeNode(entity_label)) {
                     for (archetype.components.items) |*column| {
                         const component_id = column.component_id;
                         const metadata = type_registry.metadata.get(component_id);
                         if (metadata) |meta| {
-                            const name = meta.name;
-                            zgui.bulletText("{s}", .{name});
+                            printType(type_registry, meta, allocator);
                         } else {
                             zgui.bulletText("Unknown component", .{});
                         }
                     }
-                    zgui.unindent(.{});
+                    zgui.treePop();
                 }
                 zgui.popId();
             }
         }
+        zgui.treePop();
+    }
+}
+
+fn printType(
+    type_registry: *ecs.TypeRegistry,
+    metadata: *ecs.type_registry.ReflectionMetaData,
+    allocator: std.mem.Allocator,
+) void {
+    const name = allocator.dupeZ(u8, metadata.name) catch @panic("oom");
+    defer allocator.free(name);
+    printTypeWithName(type_registry, metadata, allocator, name);
+}
+
+fn printTypeWithName(
+    type_registry: *ecs.TypeRegistry,
+    metadata: *ecs.type_registry.ReflectionMetaData,
+    allocator: std.mem.Allocator,
+    name: [:0]const u8,
+) void {
+    if (metadata.child_type) |child| {
+        const child_metadata = type_registry.metadata.get(child);
+        if (child_metadata) |meta| {
+            printTypeWithName(type_registry, meta, allocator, name);
+        } else {
+            zgui.bulletText("{s}", .{name});
+        }
+    } else if (metadata.fields.len > 0) {
+        if (zgui.treeNode(name)) {
+            for (metadata.fields) |field| {
+                const field_meta = type_registry.metadata.get(field.field_type_id);
+                if (field_meta) |meta| {
+                    var label: [:0]u8 = allocator.allocSentinel(u8, field.name.len + 2 + meta.name.len, 0) catch @panic("oom");
+                    defer allocator.free(label);
+                    @memcpy(label[0..field.name.len], field.name);
+                    @memcpy(label[field.name.len .. field.name.len + 2], ": ");
+                    @memcpy(label[field.name.len + 2 ..], meta.name);
+                    printTypeWithName(type_registry, meta, allocator, label);
+                } else {
+                    var label = allocator.alloc(u8, field.name.len + 2 + "unknown type".len) catch @panic("oom");
+                    defer allocator.free(label);
+                    @memcpy(label[0..field.name.len], field.name);
+                    @memcpy(label[field.name.len..], ": unknown type");
+                    zgui.bulletText("{s}", .{label});
+                }
+            }
+            zgui.treePop();
+        }
+    } else {
+        zgui.bulletText("{s}", .{name});
     }
 }
 

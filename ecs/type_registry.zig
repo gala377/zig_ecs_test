@@ -14,6 +14,7 @@ pub const OpaqueSelf = anyopaque;
 pub const ReflectedAny = struct {
     ptr: *anyopaque,
     type_id: usize,
+    is_const: bool,
 };
 
 pub const ReflectionField = struct {
@@ -31,6 +32,7 @@ pub const TypeKind = enum {
     value,
     pointer,
     slice,
+    optional,
 };
 
 pub const ReflectionMetaData = struct {
@@ -40,19 +42,21 @@ pub const ReflectionMetaData = struct {
     /// handling if needed
     kind: TypeKind,
     /// id of a child type if any,
-    child_type: ?usize,
+    child_type: ?usize = null,
     /// information about fields if any
-    fields: []const ReflectionField,
+    fields: []const ReflectionField = &.{},
     /// set value of this field from any value
     set: *const fn (*OpaqueSelf, ReflectedAny) void,
     /// If callable can be used to invoke
-    call: ?*const fn (*OpaqueSelf, []ReflectedAny) ReflectedAny,
+    call: ?*const fn (*OpaqueSelf, []ReflectedAny) ReflectedAny = null,
     /// If pointer can be used to dereference it
-    deref: ?*const fn (*OpaqueSelf) ReflectedAny,
+    deref: ?*const fn (*OpaqueSelf) ReflectedAny = null,
     /// If pointer can be used to set underlying memory
-    ref: ?*const fn (*OpaqueSelf, ReflectedAny) void,
+    ref: ?*const fn (*OpaqueSelf, ReflectedAny) void = null,
+    /// If optional - can be used to get value underneath
+    deref_opt: ?*const fn (*OpaqueSelf) ?ReflectedAny = null,
     /// component vtable if any
-    component_vtable: ?*const component.Opaque.VTable,
+    component_vtable: ?*const component.Opaque.VTable = null,
 };
 
 pub const TypeRegistry = struct {
@@ -69,27 +73,89 @@ pub const TypeRegistry = struct {
         };
     }
 
-    pub fn registerStruct(self: *TypeRegistry, comptime T: type) !void {
-        const meta = try structMetaData(T, self.allocator);
-        try self.registerPointer(*T);
-        return self.registerWithMetaData(T, meta);
+    pub fn registerType(self: *TypeRegistry, comptime T: type) std.mem.Allocator.Error!void {
+        const id = utils.typeId(T);
+        if (self.metadata.contains(id)) {
+            return;
+        }
+        const info = @typeInfo(T);
+        switch (info) {
+            .@"struct" => {
+                return self.registerStruct(T);
+            },
+            .pointer => |ptr| {
+                switch (ptr.size) {
+                    .one => {
+                        return self.registerPointer(T);
+                    },
+                    .slice => {
+                        std.debug.print("slices not supported for type_registry yet\n", .{});
+                    },
+                    else => {
+                        std.debug.print("many pointers not supported for type_registry yet\n", .{});
+                    },
+                }
+            },
+            .optional => |opt| {
+                try self.registerOptional(T);
+                return self.registerType(opt.child);
+            },
+            .int, .float, .bool => {
+                return self.registerValueType(T);
+            },
+            else => |t| {
+                std.debug.print("{s} not supported for type_registry yet\n", .{@tagName(t)});
+            },
+        }
     }
 
-    pub fn registerPointer(self: *TypeRegistry, comptime T: type) !void {
+    pub fn registerOptional(self: *TypeRegistry, comptime T: type) std.mem.Allocator.Error!void {
+        const id = utils.typeId(T);
+        if (self.metadata.contains(id)) {
+            return;
+        }
+        try self.registerWithMetaData(T, .{
+            .name = @typeName(T),
+            .kind = .optional,
+            .child_type = utils.typeId(@typeInfo(T).optional.child),
+            .set = simpleValueSetter(T),
+            .deref_opt = deref_opt(T),
+        });
+        try self.registerPointer(*T);
+    }
+
+    pub fn registerStruct(self: *TypeRegistry, comptime T: type) std.mem.Allocator.Error!void {
+        const id = utils.typeId(T);
+        if (self.metadata.contains(id)) {
+            return;
+        }
+        const meta = try structMetaData(T, self.allocator);
+        try self.registerWithMetaData(T, meta);
+        try self.registerType(*T);
+        const info = @typeInfo(T).@"struct";
+        inline for (info.fields) |field| {
+            try self.registerType(field.type);
+        }
+    }
+
+    pub fn registerPointer(self: *TypeRegistry, comptime T: type) std.mem.Allocator.Error!void {
+        const to_opaque = @typeInfo(@typeInfo(T).pointer.child) == .@"opaque";
+        const id = utils.typeId(T);
+        if (self.metadata.contains(id)) {
+            return;
+        }
         try self.registerWithMetaData(T, .{
             .name = @typeName(T),
             .kind = .pointer,
             .child_type = utils.typeId(@typeInfo(T).pointer.child),
-            .call = null,
-            .ref = ref(T),
-            .deref = deref(T),
+            .ref = if (to_opaque) null else ref(T),
+            .deref = if (to_opaque) null else deref(T),
             .set = simpleValueSetter(T),
-            .fields = &.{},
-            .component_vtable = null,
         });
+        try self.registerType(@typeInfo(T).pointer.child);
     }
 
-    pub fn registerStdTypes(self: *TypeRegistry) !void {
+    pub fn registerStdTypes(self: *TypeRegistry) std.mem.Allocator.Error!void {
         try self.registerValueType(usize);
         try self.registerValueType(isize);
         try self.registerValueType(i64);
@@ -102,11 +168,7 @@ pub const TypeRegistry = struct {
             .name = @typeName([]const u8),
             .kind = .slice,
             .child_type = utils.typeId(u8),
-            .call = null,
-            .deref = null,
-            .ref = null,
             .set = simpleValueSetter([]const u8),
-            .component_vtable = null,
             .fields = try self.allocator.dupe(ReflectionField, &.{
                 .{
                     .name = "len",
@@ -118,26 +180,28 @@ pub const TypeRegistry = struct {
         });
     }
 
-    pub fn registerValueType(self: *TypeRegistry, comptime T: type) !void {
+    pub fn registerValueType(self: *TypeRegistry, comptime T: type) std.mem.Allocator.Error!void {
+        const id = utils.typeId(T);
+        if (self.metadata.contains(id)) {
+            return;
+        }
         try self.registerWithMetaData(T, .{
             .name = @typeName(T),
             .kind = .value,
-            .child_type = null,
-            .fields = &.{},
             .set = simpleValueSetter(T),
-            .call = null,
-            .deref = null,
-            .ref = null,
-            .component_vtable = null,
         });
-        try self.registerPointer(*T);
+        try self.registerType(*T);
     }
 
-    pub fn registerWithMetaData(self: *TypeRegistry, comptime T: type, metadata: ReflectionMetaData) !void {
+    pub fn registerWithMetaData(self: *TypeRegistry, comptime T: type, metadata: ReflectionMetaData) std.mem.Allocator.Error!void {
         const id = utils.typeId(T);
+        if (self.metadata.contains(id)) {
+            return;
+        }
         const name = @typeName(T);
         try self.names_to_ids.put(name, id);
         const meta = try self.allocator.create(ReflectionMetaData);
+        errdefer self.allocator.destroy(meta);
         meta.* = metadata;
         try self.metadata.put(id, meta);
     }
@@ -198,6 +262,9 @@ fn ref(comptime T: type) *const fn (*anyopaque, ReflectedAny) void {
     const ValT = @typeInfo(T).pointer.child;
     return &struct {
         fn ref(this: *anyopaque, value: ReflectedAny) void {
+            if (@typeInfo(T).pointer.is_const) {
+                @panic("cannot set a const pointer");
+            }
             const self: *T = @ptrCast(@alignCast(this));
             const child_id = utils.typeId(ValT);
             if (value.type_id != child_id) {
@@ -217,10 +284,12 @@ fn deref(comptime T: type) *const fn (*anyopaque) ReflectedAny {
     const ValT = @typeInfo(T).pointer.child;
     return &struct {
         fn deref(this: *anyopaque) ReflectedAny {
+            // pointer to pointer because T is a pointer
             const self: *T = @ptrCast(@alignCast(this));
             return .{
-                .ptr = self.*,
+                .ptr = @ptrCast(@alignCast(@constCast(self.*))),
                 .type_id = utils.typeId(ValT),
+                .is_const = @typeInfo(T).pointer.is_const,
             };
         }
     }.deref;
@@ -231,10 +300,11 @@ fn sliceLenGetter(
 ) *const fn (*anyopaque) ReflectedAny {
     return &struct {
         fn get(this: *anyopaque) ReflectedAny {
-            const self: *[]T = @ptrCast(@alignCast(this));
+            const self: *[]T = @ptrCast(@alignCast(@constCast(this)));
             return .{
                 .ptr = @ptrCast(@alignCast(&self.len)),
                 .type_id = utils.typeId(usize),
+                .is_const = false,
             };
         }
     }.get;
@@ -265,8 +335,9 @@ fn fieldGetter(
             const fval = &@field(self, f.name);
             const ptr_id = utils.typeId(@TypeOf(f.type));
             return .{
-                .ptr = @ptrCast(@alignCast(fval)),
+                .ptr = @ptrCast(@alignCast(@constCast(fval))),
                 .type_id = ptr_id,
+                .is_const = false,
             };
         }
     }.get;
@@ -306,6 +377,25 @@ fn simpleValueSetter(
             this_ptr.* = other_ptr.*;
         }
     }.set;
+}
+
+fn deref_opt(comptime T: type) *const fn (*anyopaque) ?ReflectedAny {
+    return &struct {
+        fn deref_opt(this: *anyopaque) ?ReflectedAny {
+            const info = @typeInfo(T);
+            const self: *T = @ptrCast(@alignCast(this));
+            if (self.*) |*inner| {
+                const id = utils.typeId(info.optional.child);
+                return .{
+                    .ptr = @ptrCast(@alignCast(inner)),
+                    .type_id = id,
+                    .is_const = false,
+                };
+            } else {
+                return null;
+            }
+        }
+    }.deref_opt;
 }
 
 fn printIndent(indent: usize) void {
