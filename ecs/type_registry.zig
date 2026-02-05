@@ -55,6 +55,8 @@ pub const ReflectionMetaData = struct {
     ref: ?*const fn (*OpaqueSelf, ReflectedAny) void = null,
     /// If optional - can be used to get value underneath
     deref_opt: ?*const fn (*OpaqueSelf) ?ReflectedAny = null,
+    ///
+    to_string: ?*const fn (*OpaqueSelf, std.mem.Allocator) std.mem.Allocator.Error![]const u8 = null,
     /// component vtable if any
     component_vtable: ?*const component.Opaque.VTable = null,
 };
@@ -156,19 +158,20 @@ pub const TypeRegistry = struct {
     }
 
     pub fn registerStdTypes(self: *TypeRegistry) std.mem.Allocator.Error!void {
-        try self.registerValueType(usize);
-        try self.registerValueType(isize);
-        try self.registerValueType(i64);
-        try self.registerValueType(u64);
-        try self.registerValueType(bool);
-        try self.registerValueType(f64);
-        try self.registerValueType(f32);
-        try self.registerValueType(u8);
+        try self.registerValueTypeWithToString(usize, allocPrint(usize));
+        try self.registerValueTypeWithToString(isize, allocPrint(isize));
+        try self.registerValueTypeWithToString(i64, allocPrint(i64));
+        try self.registerValueTypeWithToString(u64, allocPrint(u64));
+        try self.registerValueTypeWithToString(bool, allocPrint(bool));
+        try self.registerValueTypeWithToString(f64, allocPrint(f64));
+        try self.registerValueTypeWithToString(f32, allocPrint(f32));
+        try self.registerValueTypeWithToString(u8, allocPrint(u8));
         try self.registerWithMetaData([]const u8, .{
             .name = @typeName([]const u8),
             .kind = .slice,
             .child_type = utils.typeId(u8),
             .set = simpleValueSetter([]const u8),
+            .to_string = allocPrint([]const u8),
             .fields = try self.allocator.dupe(ReflectionField, &.{
                 .{
                     .name = "len",
@@ -189,6 +192,24 @@ pub const TypeRegistry = struct {
             .name = @typeName(T),
             .kind = .value,
             .set = simpleValueSetter(T),
+        });
+        try self.registerType(*T);
+    }
+
+    pub fn registerValueTypeWithToString(
+        self: *TypeRegistry,
+        comptime T: type,
+        to_string: *const fn (*anyopaque, std.mem.Allocator) std.mem.Allocator.Error![]const u8,
+    ) std.mem.Allocator.Error!void {
+        const id = utils.typeId(T);
+        if (self.metadata.contains(id)) {
+            return;
+        }
+        try self.registerWithMetaData(T, .{
+            .name = @typeName(T),
+            .kind = .value,
+            .set = simpleValueSetter(T),
+            .to_string = to_string,
         });
         try self.registerType(*T);
     }
@@ -425,4 +446,13 @@ pub fn printReflected(type_registry: *TypeRegistry, id: usize, indent: usize) vo
     } else {
         std.debug.print(",\n", .{});
     }
+}
+
+fn allocPrint(comptime T: type) *const fn (*anyopaque, std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
+    return &struct {
+        fn to_string(this: *anyopaque, allocator: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
+            const as_t: *T = @ptrCast(@alignCast(this));
+            return std.fmt.allocPrint(allocator, "{any}", .{as_t.*});
+        }
+    }.to_string;
 }

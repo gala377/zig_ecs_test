@@ -7,17 +7,208 @@ const entity_storage = ecs.EntityStorage;
 
 const Game = ecs.game.Game;
 
+pub const EntityDetailsView = struct {
+    pub const component_info = ecs.Component(EntityDetailsView);
+    allocator: std.mem.Allocator,
+    entities: std.ArrayList(entity.Id),
+
+    pub fn init(allocator: std.mem.Allocator) EntityDetailsView {
+        return .{
+            .allocator = allocator,
+            .entities = .empty,
+        };
+    }
+
+    pub fn add(self: *EntityDetailsView, id: entity.Id) !void {
+        return self.entities.append(self.allocator, id);
+    }
+
+    pub fn remove(self: *EntityDetailsView, id: entity.Id) void {
+        var index: ?usize = null;
+        for (self.entities.items, 0..) |e, idx| {
+            if (e.scene_id == id.scene_id and e.entity_id == id.entity_id) {
+                index = idx;
+                break;
+            }
+        }
+        if (index) |idx| {
+            _ = self.entities.orderedRemove(idx);
+        }
+    }
+
+    pub fn deinit(self: *EntityDetailsView, allocator: std.mem.Allocator) void {
+        _ = allocator;
+        self.entities.deinit(self.allocator);
+    }
+};
+
+pub fn showEntityDetails(game: *Game) void {
+    const view = game.getResource(EntityDetailsView);
+    const type_registry = &game.type_registry;
+    const entity_view = view.get();
+    const entities: []const entity.Id = entity_view.entities.items;
+    var remove_views: std.ArrayList(entity.Id) = .empty;
+    defer remove_views.deinit(game.allocator);
+    for (entities, 0..) |e, entity_index| {
+        const scene = if (game.current_scene) |*s| s else null;
+        if (e.scene_id == 0) {
+            // global entity
+            const storage = &game.global_entity_storage;
+            const archetype_record = storage.entity_map.get(e);
+            if (archetype_record) |record| {
+                const title: [:0]const u8 = std.fmt.allocPrintSentinel(
+                    game.allocator,
+                    "Entity {any}::{any}###{any}",
+                    .{ e.scene_id, e.entity_id, entity_index },
+                    0,
+                ) catch {
+                    @panic("oom");
+                };
+                defer game.allocator.free(title);
+                var show = true;
+                if (zgui.begin(title, .{ .popen = &show })) {
+                    const archetype = &storage.archetypes.items[record.archetype_index];
+                    for (archetype.components.items) |*column| {
+                        const component_id = column.component_id;
+                        const metadata = type_registry.metadata.get(component_id);
+                        const component_pointer = column.getOpaque(record.row_id);
+                        if (metadata) |meta| {
+                            const reflected = ecs.type_registry.ReflectedAny{
+                                .is_const = false,
+                                .ptr = component_pointer,
+                                .type_id = column.component_id,
+                            };
+                            printType(type_registry, meta, game.allocator, reflected);
+                        } else {
+                            zgui.bulletText("Unknown component", .{});
+                        }
+                    }
+                }
+                zgui.end();
+                if (!show) {
+                    remove_views.append(game.allocator, e) catch @panic("oom");
+                }
+            } else {
+                const close = showEmptyWindow(
+                    e,
+                    "Entity has been deleted",
+                    game.allocator,
+                );
+                if (close) {
+                    remove_views.append(game.allocator, e) catch {
+                        @panic("oom");
+                    };
+                }
+            }
+        } else {
+            // scene entity
+            if (scene) |s| {
+                if (s.id == e.scene_id) {
+                    const storage = &s.entity_storage;
+                    const archetype_record = storage.entity_map.get(e);
+                    if (archetype_record) |record| {
+                        const title: [:0]const u8 = std.fmt.allocPrintSentinel(
+                            game.allocator,
+                            "Entity {any}::{any}###{any}",
+                            .{ e.scene_id, e.entity_id, entity_index },
+                            0,
+                        ) catch {
+                            @panic("oom");
+                        };
+                        defer game.allocator.free(title);
+                        var show = true;
+                        if (zgui.begin(title, .{ .popen = &show })) {
+                            const archetype = &storage.archetypes.items[record.archetype_index];
+                            for (archetype.components.items) |*column| {
+                                const component_id = column.component_id;
+                                const metadata = type_registry.metadata.get(component_id);
+                                const component_pointer = column.getOpaque(record.row_id);
+                                if (metadata) |meta| {
+                                    const reflected = ecs.type_registry.ReflectedAny{
+                                        .is_const = false,
+                                        .ptr = component_pointer,
+                                        .type_id = column.component_id,
+                                    };
+                                    printType(type_registry, meta, game.allocator, reflected);
+                                } else {
+                                    zgui.bulletText("Unknown component", .{});
+                                }
+                            }
+                        }
+                        zgui.end();
+                        if (!show) {
+                            remove_views.append(game.allocator, e) catch @panic("oom");
+                        }
+                    } else {
+                        const close = showEmptyWindow(
+                            e,
+                            "Entity has been deleted",
+                            game.allocator,
+                        );
+                        if (close) {
+                            remove_views.append(game.allocator, e) catch {
+                                @panic("oom");
+                            };
+                        }
+                    }
+                } else {
+                    const close = showEmptyWindow(
+                        e,
+                        "Active scene is not the same as entities scene",
+                        game.allocator,
+                    );
+                    if (close) {
+                        remove_views.append(game.allocator, e) catch {
+                            @panic("oom");
+                        };
+                    }
+                }
+            } else {
+                const close = showEmptyWindow(
+                    e,
+                    "This is a scene entity but there is no scene active",
+                    game.allocator,
+                );
+                if (close) {
+                    remove_views.append(game.allocator, e) catch {
+                        @panic("oom");
+                    };
+                }
+            }
+        }
+    }
+    for (remove_views.items) |id| {
+        entity_view.remove(id);
+    }
+}
+
+fn showEmptyWindow(id: entity.Id, msg: []const u8, allocator: std.mem.Allocator) bool {
+    const title: [:0]const u8 = std.fmt.allocPrintSentinel(allocator, "Entity {any}::{any}", .{ id.scene_id, id.entity_id }, 0) catch {
+        @panic("oom");
+    };
+    defer allocator.free(title);
+    var show_window = true;
+    if (zgui.begin(title, .{ .popen = &show_window })) {
+        zgui.text("ERROR: {s}", .{msg});
+    }
+    zgui.end();
+    return !show_window;
+}
+
 pub fn allEntities(game: *Game) void {
     if (zgui.begin("entities", .{})) {
         const type_registry = &game.type_registry;
         const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
         const global_archetypes = game.global_entity_storage.archetypes;
+        const view = game.getResource(EntityDetailsView);
+        const entity_view = view.get();
         printFromArchetype(
             global_archetypes.items,
             game.allocator,
             type_registry,
             "global",
             0,
+            entity_view,
         );
         printFromArchetype(
             scene_archetypes.items,
@@ -25,6 +216,7 @@ pub fn allEntities(game: *Game) void {
             type_registry,
             "scene",
             @intCast(game.current_scene.?.id),
+            entity_view,
         );
     }
     zgui.end();
@@ -36,6 +228,7 @@ fn printFromArchetype(
     type_registry: *ecs.TypeRegistry,
     label: []const u8,
     id: i32,
+    entity_view: *EntityDetailsView,
 ) void {
     const group_label = std.fmt.allocPrintSentinel(
         allocator,
@@ -67,12 +260,28 @@ fn printFromArchetype(
                     0,
                 ) catch @panic("could not allocate memory");
                 defer allocator.free(entity_label);
-                if (zgui.treeNode(entity_label)) {
+                const show_entity = zgui.treeNode(entity_label);
+                if (zgui.beginPopupContextItem()) {
+                    if (zgui.menuItem("Details", .{})) {
+                        entity_view.add(entity_id.*) catch @panic("oom");
+                    }
+                    if (zgui.menuItem("Delete", .{})) {
+                        std.debug.print("Deleting entity {any}\n", .{entity_id.entity_id});
+                    }
+                    zgui.endPopup();
+                }
+                if (show_entity) {
                     for (archetype.components.items) |*column| {
                         const component_id = column.component_id;
                         const metadata = type_registry.metadata.get(component_id);
+                        const component_pointer = column.getOpaque(entity_index);
                         if (metadata) |meta| {
-                            printType(type_registry, meta, allocator);
+                            const reflected = ecs.type_registry.ReflectedAny{
+                                .is_const = false,
+                                .ptr = component_pointer,
+                                .type_id = column.component_id,
+                            };
+                            printType(type_registry, meta, allocator, reflected);
                         } else {
                             zgui.bulletText("Unknown component", .{});
                         }
@@ -90,10 +299,17 @@ fn printType(
     type_registry: *ecs.TypeRegistry,
     metadata: *ecs.type_registry.ReflectionMetaData,
     allocator: std.mem.Allocator,
+    reflected: ?ecs.type_registry.ReflectedAny,
 ) void {
     const name = allocator.dupeZ(u8, metadata.name) catch @panic("oom");
     defer allocator.free(name);
-    printTypeWithName(type_registry, metadata, allocator, name);
+    printTypeWithName(
+        type_registry,
+        metadata,
+        allocator,
+        name,
+        reflected,
+    );
 }
 
 fn printTypeWithName(
@@ -101,37 +317,62 @@ fn printTypeWithName(
     metadata: *ecs.type_registry.ReflectionMetaData,
     allocator: std.mem.Allocator,
     name: [:0]const u8,
+    maybe_reflected: ?ecs.type_registry.ReflectedAny,
 ) void {
-    if (metadata.child_type) |child| {
-        const child_metadata = type_registry.metadata.get(child);
-        if (child_metadata) |meta| {
-            printTypeWithName(type_registry, meta, allocator, name);
-        } else {
-            zgui.bulletText("{s}", .{name});
-        }
-    } else if (metadata.fields.len > 0) {
-        if (zgui.treeNode(name)) {
-            for (metadata.fields) |field| {
-                const field_meta = type_registry.metadata.get(field.field_type_id);
-                if (field_meta) |meta| {
-                    var label: [:0]u8 = allocator.allocSentinel(u8, field.name.len + 2 + meta.name.len, 0) catch @panic("oom");
-                    defer allocator.free(label);
-                    @memcpy(label[0..field.name.len], field.name);
-                    @memcpy(label[field.name.len .. field.name.len + 2], ": ");
-                    @memcpy(label[field.name.len + 2 ..], meta.name);
-                    printTypeWithName(type_registry, meta, allocator, label);
+    if (maybe_reflected) |reflected| {
+        if (metadata.child_type) |child| {
+            const child_metadata = type_registry.metadata.get(child);
+            if (child_metadata) |meta| {
+                var next_reflected: ?ecs.type_registry.ReflectedAny = undefined;
+                if (metadata.kind == .pointer) {
+                    if (metadata.deref) |deref| {
+                        next_reflected = deref(reflected.ptr);
+                    } else {
+                        next_reflected = null;
+                    }
+                } else if (metadata.kind == .optional) {
+                    next_reflected = metadata.deref_opt.?(reflected.ptr);
                 } else {
-                    var label = allocator.alloc(u8, field.name.len + 2 + "unknown type".len) catch @panic("oom");
-                    defer allocator.free(label);
-                    @memcpy(label[0..field.name.len], field.name);
-                    @memcpy(label[field.name.len..], ": unknown type");
-                    zgui.bulletText("{s}", .{label});
+                    next_reflected = null;
                 }
+                printTypeWithName(type_registry, meta, allocator, name, next_reflected);
+            } else {
+                zgui.bulletText("{s}", .{name});
             }
-            zgui.treePop();
+        } else if (metadata.fields.len > 0) {
+            if (zgui.treeNode(name)) {
+                for (metadata.fields) |field| {
+                    const field_meta = type_registry.metadata.get(field.field_type_id);
+                    if (field_meta) |meta| {
+                        var label: [:0]u8 = allocator.allocSentinel(u8, field.name.len + 2 + meta.name.len, 0) catch @panic("oom");
+                        defer allocator.free(label);
+                        @memcpy(label[0..field.name.len], field.name);
+                        @memcpy(label[field.name.len .. field.name.len + 2], ": ");
+                        @memcpy(label[field.name.len + 2 ..], meta.name);
+                        const next_reflected = field.get(reflected.ptr);
+                        printTypeWithName(type_registry, meta, allocator, label, next_reflected);
+                    } else {
+                        var label = allocator.alloc(u8, field.name.len + 2 + "unknown type".len) catch @panic("oom");
+                        defer allocator.free(label);
+                        @memcpy(label[0..field.name.len], field.name);
+                        @memcpy(label[field.name.len..], ": unknown type");
+                        zgui.bulletText("{s}", .{label});
+                    }
+                }
+                zgui.treePop();
+            }
+        } else {
+            if (metadata.to_string) |to_string| {
+                const repr = to_string(reflected.ptr, allocator) catch @panic("oom");
+                defer allocator.free(repr);
+                zgui.bulletText("{s} = {s}", .{ name, repr });
+            } else {
+                // not a pointer and doesn't have fields so we can safely print the value here
+                zgui.bulletText("{s} = unknown", .{name});
+            }
         }
     } else {
-        zgui.bulletText("{s}", .{name});
+        zgui.bulletText("{s} = null", .{name});
     }
 }
 
