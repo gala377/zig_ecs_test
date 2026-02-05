@@ -35,6 +35,11 @@ pub fn EventBuffer(comptime T: type) type {
     };
 }
 
+fn noSubsystems(this: ?*anyopaque) []const System {
+    _ = this;
+    return &.{};
+}
+
 pub fn EventReader(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -128,6 +133,7 @@ pub fn eventSystem(comptime T: type) System {
         .vtable = &.{
             .deinit = &ignore,
             .run = &run,
+            .subsystems = &noSubsystems,
         },
     };
 }

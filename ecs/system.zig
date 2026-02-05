@@ -8,6 +8,7 @@ const Game = ecs.Game;
 pub const SystemVTable = struct {
     run: *const fn (?*anyopaque, *Game) void,
     deinit: *const fn (?*anyopaque) void,
+    subsystems: *const fn (?*anyopaque) []const System,
 };
 
 pub const System = struct {
@@ -24,6 +25,10 @@ pub const System = struct {
 
     pub fn deinit(self: *const Self) void {
         self.vtable.deinit(self.context);
+    }
+
+    pub fn subsystems(self: *const Self) []const System {
+        return self.vtable.subsystems(self.context);
     }
 
     pub fn run_if(self: Self, allocator: std.mem.Allocator, comptime F: anytype) System {
@@ -50,10 +55,16 @@ pub const System = struct {
             .vtable = &.{
                 .run = &run_impl,
                 .deinit = &ConditionalContext.deinit,
+                .subsystems = &noSubsystems,
             },
         };
     }
 };
+
+fn noSubsystems(self: ?*anyopaque) []const System {
+    _ = self;
+    return &.{};
+}
 
 const ConditionalContext = struct {
     inner_system: System,
@@ -85,6 +96,11 @@ const ChainContext = struct {
         context.allocator.free(context.systems);
         context.allocator.destroy(context);
     }
+
+    pub fn subsystems(ptr: ?*anyopaque) []const System {
+        const context: *ChainContext = @ptrCast(@alignCast(ptr.?));
+        return context.systems;
+    }
 };
 
 pub fn chain(allocator: std.mem.Allocator, systems: []const System) !System {
@@ -99,6 +115,7 @@ pub fn chain(allocator: std.mem.Allocator, systems: []const System) !System {
         .vtable = &.{
             .deinit = &ChainContext.deinit,
             .run = &ChainContext.run,
+            .subsystems = &ChainContext.subsystems,
         },
     };
 }
@@ -114,8 +131,15 @@ pub fn system(comptime F: anytype) System {
         .vtable = &.{
             .deinit = &ignore,
             .run = &mkFnSystem(F),
+            .subsystems = &noSubsystems,
         },
     };
+}
+
+pub fn labeledSystem(name: []const u8, comptime F: anytype) System {
+    var s = system(F);
+    s.name = name;
+    return s;
 }
 
 pub const func = system;
@@ -214,6 +238,11 @@ const ConcurrentContext = struct {
         context.allocator.free(context.systems);
         context.allocator.destroy(context);
     }
+
+    pub fn subsystems(ptr: ?*anyopaque) []const System {
+        const context: *ConcurrentContext = @ptrCast(@alignCast(ptr.?));
+        return context.systems;
+    }
 };
 
 /// Used to make group of systems concurrent
@@ -231,6 +260,7 @@ pub fn concurrent(allocator: std.mem.Allocator, systems: []const System) !System
         .vtable = &.{
             .deinit = &ConcurrentContext.deinit,
             .run = &ConcurrentContext.run,
+            .subsystems = &ConcurrentContext.subsystems,
         },
     };
 }

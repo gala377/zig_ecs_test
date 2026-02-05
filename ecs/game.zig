@@ -151,10 +151,17 @@ pub const Game = struct {
             .should_close = false,
             .log = &.{},
         });
+
+        try self.type_registry.registerStruct(runtime.allocators.GlobalAllocator);
+        try self.type_registry.registerStruct(runtime.allocators.FrameAllocator);
         try self.addResource(commands.init(self));
-        try self.addSystem(.post_update, applyGameActions);
-        try self.addSystem(.post_update, commands_system.create_entities);
-        try self.addSystem(.tear_down, runtime.allocators.freeFrameAllocator);
+        try self.addSystems(.post_update, &.{
+            ecs.system.labeledSystem("core.applyGameActions", applyGameActions),
+            ecs.system.labeledSystem("commands.create_entities", commands_system.create_entities),
+        });
+        try self.addSystems(.tear_down, &.{
+            ecs.system.labeledSystem("runtime.allocators.freeFrameAllocator", runtime.allocators.freeFrameAllocator),
+        });
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
@@ -519,6 +526,14 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.win
         game.exportComponent(core.Color);
         DynamicQuery.registerMetaTable(game.lua_state);
     }
+
+    try game.type_registry.registerStruct(GameActions);
+    try game.type_registry.registerStruct(entity.Id);
+    try game.type_registry.registerStruct(core.Vec2);
+    try game.type_registry.registerStruct(core.Position);
+    try game.type_registry.registerStruct(core.Style);
+    try game.type_registry.registerStruct(core.Color);
+    try game.type_registry.registerStruct(LuaRuntime);
 }
 
 fn applyGameActions(game: *Game) void {

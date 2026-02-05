@@ -178,8 +178,14 @@ pub fn intoSystem(self: Self) !System {
         .vtable = &.{
             .run = &systemRun,
             .deinit = &systemDeinit,
+            .subsystems = &noSubsystems,
         },
     };
+}
+
+fn noSubsystems(this: ?*anyopaque) []const System {
+    _ = this;
+    return &.{};
 }
 
 fn systemRun(context: ?*anyopaque, game: *Game) void {

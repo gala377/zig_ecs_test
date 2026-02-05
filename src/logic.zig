@@ -10,7 +10,7 @@ const LuaRuntime = ecs.runtime.lua_runtime;
 const EventReader = ecs.runtime.events.EventReader;
 const EventWriter = ecs.runtime.events.EventWriter;
 const Query = ecs.Query;
-const system = ecs.system;
+const system = ecs.system_mod.labeledSystem;
 const imgui = ecs.imgui;
 const Button = imgui.components.Button;
 const Vec2 = ecs.core.Vec2;
@@ -27,20 +27,20 @@ const GameAllocator = ecs.runtime.allocators.GlobalAllocator;
 pub fn install(game: *Game) !void {
     std.debug.print("adding systems\n", .{});
     try game.addSystems(.update, &.{
-        system(print_on_button),
-        system(call_ref),
-        system(spawn_on_click),
-        system(read_new_entities),
-        system(remove_last_entity),
-        system(read_events),
-        system(move_player_marker),
-        system(spawn_circle),
-        system(add_player),
+        system("print_on_button", print_on_button),
+        system("call_ref", call_ref),
+        system("spawn_on_click", spawn_on_click),
+        system("read_new_entities", read_new_entities),
+        system("remove_last_entity", remove_last_entity),
+        system("read_events", read_events),
+        system("move_player_marker", move_player_marker),
+        system("spawn_circle", spawn_circle),
+        system("add_player", add_player),
     });
     try game.addSystems(.setup, &.{
-        system(setup_circle),
+        system("setup_circle", setup_circle),
     });
-    try game.addSystem(.post_update, finish_run);
+    try game.addSystems(.post_update, &.{system("finish_run", finish_run)});
 
     std.debug.print("adding resources\n", .{});
     try game.addResource(RunOnce{});
@@ -198,13 +198,13 @@ pub fn install(game: *Game) !void {
     std.debug.print("done... running\n", .{});
     try game.addSystems(.setup, &.{
         try ecs.chain(game.allocator, &.{
-            system(chain1),
-            system(chain2),
-            system(chain3),
+            system("chain1", chain1),
+            system("chain2", chain2),
+            system("chain3", chain3),
         }),
     });
     try game.addSystems(.update, &.{
-        system(spam_me).run_if(
+        system("spam_me", spam_me).run_if(
             game.allocator,
             test_item_exists,
         ),

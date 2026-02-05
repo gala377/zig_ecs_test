@@ -8,26 +8,25 @@ const entity_storage = ecs.EntityStorage;
 const Game = ecs.game.Game;
 
 pub fn allEntities(game: *Game) void {
-    if (!zgui.begin("entities", .{})) {
-        return;
+    if (zgui.begin("entities", .{})) {
+        const type_registry = &game.type_registry;
+        const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
+        const global_archetypes = game.global_entity_storage.archetypes;
+        printFromArchetype(
+            global_archetypes.items,
+            game.allocator,
+            type_registry,
+            "global",
+            0,
+        );
+        printFromArchetype(
+            scene_archetypes.items,
+            game.allocator,
+            type_registry,
+            "scene",
+            @intCast(game.current_scene.?.id),
+        );
     }
-    const type_registry = &game.type_registry;
-    const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
-    const global_archetypes = game.global_entity_storage.archetypes;
-    printFromArchetype(
-        global_archetypes.items,
-        game.allocator,
-        type_registry,
-        "global",
-        0,
-    );
-    printFromArchetype(
-        scene_archetypes.items,
-        game.allocator,
-        type_registry,
-        "scene",
-        @intCast(game.current_scene.?.id),
-    );
     zgui.end();
 }
 
@@ -112,7 +111,7 @@ fn printPhase(phase: ecs.Schedule.Phase, schedule: *ecs.Schedule, allocator: std
             defer allocator.free(headerName);
             if (zgui.treeNode(headerName)) {
                 for (schdl.systems.items) |system| {
-                    zgui.bulletText("{s}", .{system.name});
+                    printSystem(system, allocator);
                 }
                 zgui.treePop();
             }
@@ -121,4 +120,20 @@ fn printPhase(phase: ecs.Schedule.Phase, schedule: *ecs.Schedule, allocator: std
         zgui.treePop();
     }
     zgui.popId();
+}
+
+fn printSystem(system: ecs.system.System, allocator: std.mem.Allocator) void {
+    const subsystems = system.subsystems();
+    if (subsystems.len == 0) {
+        zgui.bulletText("{s}", .{system.name});
+    } else {
+        const name = allocator.dupeZ(u8, system.name) catch @panic("oom");
+        defer allocator.free(name);
+        if (zgui.treeNode(name)) {
+            for (subsystems) |s| {
+                printSystem(s, allocator);
+            }
+            zgui.treePop();
+        }
+    }
 }
