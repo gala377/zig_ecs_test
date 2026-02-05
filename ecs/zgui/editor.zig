@@ -69,6 +69,7 @@ pub fn showEntityDetails(game: *Game) void {
             } else {
                 if (showEmptyWindow(
                     e,
+                    entity_index,
                     "Entity has been deleted",
                     game.allocator,
                 )) {
@@ -97,6 +98,7 @@ pub fn showEntityDetails(game: *Game) void {
                     } else {
                         if (showEmptyWindow(
                             e,
+                            entity_index,
                             "Entity has been deleted",
                             game.allocator,
                         )) {
@@ -108,6 +110,7 @@ pub fn showEntityDetails(game: *Game) void {
                 } else {
                     if (showEmptyWindow(
                         e,
+                        entity_index,
                         "Active scene is not the same as entities scene",
                         game.allocator,
                     )) {
@@ -119,6 +122,7 @@ pub fn showEntityDetails(game: *Game) void {
             } else {
                 if (showEmptyWindow(
                     e,
+                    entity_index,
                     "This is a scene entity but there is no scene active",
                     game.allocator,
                 )) {
@@ -174,8 +178,13 @@ fn entityDetailsWindow(
     return !show;
 }
 
-fn showEmptyWindow(id: entity.Id, msg: []const u8, allocator: std.mem.Allocator) bool {
-    const title: [:0]const u8 = std.fmt.allocPrintSentinel(allocator, "Entity {any}::{any}", .{ id.scene_id, id.entity_id }, 0) catch {
+fn showEmptyWindow(id: entity.Id, entity_index: usize, msg: []const u8, allocator: std.mem.Allocator) bool {
+    const title: [:0]const u8 = std.fmt.allocPrintSentinel(
+        allocator,
+        "Entity {any}::{any}###{any}",
+        .{ id.scene_id, id.entity_id, entity_index },
+        0,
+    ) catch {
         @panic("oom");
     };
     defer allocator.free(title);
