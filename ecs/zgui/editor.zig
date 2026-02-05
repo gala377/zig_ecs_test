@@ -56,45 +56,22 @@ pub fn showEntityDetails(game: *Game) void {
             const storage = &game.global_entity_storage;
             const archetype_record = storage.entity_map.get(e);
             if (archetype_record) |record| {
-                const title: [:0]const u8 = std.fmt.allocPrintSentinel(
+                if (entityDetailsWindow(
+                    e,
+                    entity_index,
+                    record,
+                    type_registry,
+                    storage,
                     game.allocator,
-                    "Entity {any}::{any}###{any}",
-                    .{ e.scene_id, e.entity_id, entity_index },
-                    0,
-                ) catch {
-                    @panic("oom");
-                };
-                defer game.allocator.free(title);
-                var show = true;
-                if (zgui.begin(title, .{ .popen = &show })) {
-                    const archetype = &storage.archetypes.items[record.archetype_index];
-                    for (archetype.components.items) |*column| {
-                        const component_id = column.component_id;
-                        const metadata = type_registry.metadata.get(component_id);
-                        const component_pointer = column.getOpaque(record.row_id);
-                        if (metadata) |meta| {
-                            const reflected = ecs.type_registry.ReflectedAny{
-                                .is_const = false,
-                                .ptr = component_pointer,
-                                .type_id = column.component_id,
-                            };
-                            printType(type_registry, meta, game.allocator, reflected);
-                        } else {
-                            zgui.bulletText("Unknown component", .{});
-                        }
-                    }
-                }
-                zgui.end();
-                if (!show) {
+                )) {
                     remove_views.append(game.allocator, e) catch @panic("oom");
                 }
             } else {
-                const close = showEmptyWindow(
+                if (showEmptyWindow(
                     e,
                     "Entity has been deleted",
                     game.allocator,
-                );
-                if (close) {
+                )) {
                     remove_views.append(game.allocator, e) catch {
                         @panic("oom");
                     };
@@ -107,69 +84,44 @@ pub fn showEntityDetails(game: *Game) void {
                     const storage = &s.entity_storage;
                     const archetype_record = storage.entity_map.get(e);
                     if (archetype_record) |record| {
-                        const title: [:0]const u8 = std.fmt.allocPrintSentinel(
+                        if (entityDetailsWindow(
+                            e,
+                            entity_index,
+                            record,
+                            type_registry,
+                            storage,
                             game.allocator,
-                            "Entity {any}::{any}###{any}",
-                            .{ e.scene_id, e.entity_id, entity_index },
-                            0,
-                        ) catch {
-                            @panic("oom");
-                        };
-                        defer game.allocator.free(title);
-                        var show = true;
-                        if (zgui.begin(title, .{ .popen = &show })) {
-                            const archetype = &storage.archetypes.items[record.archetype_index];
-                            for (archetype.components.items) |*column| {
-                                const component_id = column.component_id;
-                                const metadata = type_registry.metadata.get(component_id);
-                                const component_pointer = column.getOpaque(record.row_id);
-                                if (metadata) |meta| {
-                                    const reflected = ecs.type_registry.ReflectedAny{
-                                        .is_const = false,
-                                        .ptr = component_pointer,
-                                        .type_id = column.component_id,
-                                    };
-                                    printType(type_registry, meta, game.allocator, reflected);
-                                } else {
-                                    zgui.bulletText("Unknown component", .{});
-                                }
-                            }
-                        }
-                        zgui.end();
-                        if (!show) {
+                        )) {
                             remove_views.append(game.allocator, e) catch @panic("oom");
                         }
                     } else {
-                        const close = showEmptyWindow(
+                        if (showEmptyWindow(
                             e,
                             "Entity has been deleted",
                             game.allocator,
-                        );
-                        if (close) {
+                        )) {
                             remove_views.append(game.allocator, e) catch {
                                 @panic("oom");
                             };
                         }
                     }
                 } else {
-                    const close = showEmptyWindow(
+                    if (showEmptyWindow(
                         e,
                         "Active scene is not the same as entities scene",
                         game.allocator,
-                    );
-                    if (close) {
+                    )) {
                         remove_views.append(game.allocator, e) catch {
                             @panic("oom");
                         };
                     }
                 }
             } else {
-                const close = showEmptyWindow(
+                if (showEmptyWindow(
                     e,
                     "This is a scene entity but there is no scene active",
                     game.allocator,
-                );
-                if (close) {
+                )) {
                     remove_views.append(game.allocator, e) catch {
                         @panic("oom");
                     };
@@ -180,6 +132,46 @@ pub fn showEntityDetails(game: *Game) void {
     for (remove_views.items) |id| {
         entity_view.remove(id);
     }
+}
+
+fn entityDetailsWindow(
+    e: entity.Id,
+    entity_index: usize,
+    record: ecs.EntityStorage.EntityArchetypeRecord,
+    type_registry: *ecs.TypeRegistry,
+    storage: *ecs.EntityStorage,
+    allocator: std.mem.Allocator,
+) bool {
+    const title: [:0]const u8 = std.fmt.allocPrintSentinel(
+        allocator,
+        "Entity {any}::{any}###{any}",
+        .{ e.scene_id, e.entity_id, entity_index },
+        0,
+    ) catch {
+        @panic("oom");
+    };
+    defer allocator.free(title);
+    var show = true;
+    if (zgui.begin(title, .{ .popen = &show })) {
+        const archetype = &storage.archetypes.items[record.archetype_index];
+        for (archetype.components.items) |*column| {
+            const component_id = column.component_id;
+            const metadata = type_registry.metadata.get(component_id);
+            const component_pointer = column.getOpaque(record.row_id);
+            if (metadata) |meta| {
+                const reflected = ecs.type_registry.ReflectedAny{
+                    .is_const = false,
+                    .ptr = component_pointer,
+                    .type_id = column.component_id,
+                };
+                printType(type_registry, meta, allocator, reflected);
+            } else {
+                zgui.bulletText("Unknown component", .{});
+            }
+        }
+    }
+    zgui.end();
+    return !show;
 }
 
 fn showEmptyWindow(id: entity.Id, msg: []const u8, allocator: std.mem.Allocator) bool {
@@ -195,7 +187,7 @@ fn showEmptyWindow(id: entity.Id, msg: []const u8, allocator: std.mem.Allocator)
     return !show_window;
 }
 
-pub fn allEntities(game: *Game) void {
+pub fn allEntities(game: *Game, commands: ecs.runtime.commands.Commands) void {
     if (zgui.begin("entities", .{})) {
         const type_registry = &game.type_registry;
         const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
@@ -209,6 +201,7 @@ pub fn allEntities(game: *Game) void {
             "global",
             0,
             entity_view,
+            commands,
         );
         printFromArchetype(
             scene_archetypes.items,
@@ -217,6 +210,7 @@ pub fn allEntities(game: *Game) void {
             "scene",
             @intCast(game.current_scene.?.id),
             entity_view,
+            commands,
         );
     }
     zgui.end();
@@ -229,6 +223,7 @@ fn printFromArchetype(
     label: []const u8,
     id: i32,
     entity_view: *EntityDetailsView,
+    commands: ecs.runtime.commands.Commands,
 ) void {
     const group_label = std.fmt.allocPrintSentinel(
         allocator,
@@ -266,7 +261,7 @@ fn printFromArchetype(
                         entity_view.add(entity_id.*) catch @panic("oom");
                     }
                     if (zgui.menuItem("Delete", .{})) {
-                        std.debug.print("Deleting entity {any}\n", .{entity_id.entity_id});
+                        commands.get().removeEntity(entity_id.*) catch @panic("oom");
                     }
                     zgui.endPopup();
                 }

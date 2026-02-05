@@ -53,7 +53,7 @@ pub const ComponentFromLua = *const fn (state: *clua.lua_State, storage: *Self) 
 // Maps entities to their respective archetypes so we can
 pub const EntityMap = std.AutoHashMap(entity.Id, EntityArchetypeRecord);
 
-const EntityArchetypeRecord = struct {
+pub const EntityArchetypeRecord = struct {
     // archetype that this entity belogs to
     archetype_index: usize,
     // row in this archetype that this entity stores it's components at
