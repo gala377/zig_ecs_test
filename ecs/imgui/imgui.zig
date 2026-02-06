@@ -5,6 +5,10 @@ pub const components = @import("components.zig");
 
 const Game = ecs.Game;
 
-pub fn exportLua(game: *Game) !void {
+pub fn install(game: *Game) !void {
+    try game.type_registry.registerType(components.Button);
+}
+
+pub fn exportLua(game: *Game) void {
     game.exportComponent(components.Button);
 }

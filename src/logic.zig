@@ -23,6 +23,7 @@ const Without = ecs.game.Without;
 const lua_script = ecs.lua_script;
 const Marker = ecs.Marker;
 const GameAllocator = ecs.runtime.allocators.GlobalAllocator;
+const Name = ecs.core.Name;
 
 pub fn install(game: *Game) !void {
     std.debug.print("adding systems\n", .{});
@@ -73,13 +74,10 @@ pub fn install(game: *Game) !void {
     try game.type_registry.registerStruct(ButtonSpawn);
     try game.type_registry.registerStruct(ButtonAddCircle);
     try game.type_registry.registerStruct(ButtonAddPlayer);
+    try game.type_registry.registerStruct(ButtonRemoveLast);
+    try game.type_registry.registerStruct(NewCircle);
     try game.type_registry.registerStruct(ButtonLua);
-
-    ecs.type_registry.printReflected(
-        &game.type_registry,
-        ecs.utils.typeId(Foo),
-        0,
-    );
+    try game.type_registry.registerStruct(TestItem);
 
     const open_title: [:0]u8 = try game.allocator.dupeZ(u8, "Open");
     const close_title: [:0]u8 = try game.allocator.dupeZ(u8, "Close");
@@ -91,6 +89,7 @@ pub fn install(game: *Game) !void {
     const buttons_size = Vec2{ .x = 100.0, .y = 25.0 };
     const position = Vec2{ .x = 50.0, .y = 50.0 };
     _ = try game.newGlobalEntity(.{
+        Name.init("ButtonOpen"),
         imgui.components.Button{
             .pos = position,
             .size = buttons_size,
@@ -99,6 +98,7 @@ pub fn install(game: *Game) !void {
         ButtonOpen{},
     });
     _ = try game.newGlobalEntity(.{
+        Name.init("ButtonClose"),
         imgui.components.Button{
             .pos = position.add_y(buttons_size.y),
             .size = buttons_size,
@@ -109,6 +109,7 @@ pub fn install(game: *Game) !void {
     });
 
     _ = try game.newGlobalEntity(.{
+        Name.init("ButtonLua"),
         imgui.components.Button{
             .pos = position.add_y(buttons_size.y * 2),
             .size = buttons_size,
@@ -120,6 +121,7 @@ pub fn install(game: *Game) !void {
     });
 
     _ = try game.newGlobalEntity(.{
+        Name.init("ButtonSpawn"),
         imgui.components.Button{
             .pos = position.add_y(buttons_size.y * 3),
             .size = buttons_size,
@@ -129,6 +131,7 @@ pub fn install(game: *Game) !void {
     });
 
     _ = try game.newGlobalEntity(.{
+        Name.init("ButtonRemoveLast"),
         imgui.components.Button{
             .pos = position.add_y(buttons_size.y * 4),
             .size = buttons_size,
@@ -139,6 +142,7 @@ pub fn install(game: *Game) !void {
 
     const add_circle_title: [:0]u8 = try game.allocator.dupeZ(u8, "New circle");
     _ = try game.newGlobalEntity(.{
+        Name.init("ButtonAddCircle"),
         imgui.components.Button{
             .pos = position.add_y(buttons_size.y * 5),
             .size = buttons_size,
@@ -149,6 +153,7 @@ pub fn install(game: *Game) !void {
 
     const add_player_title: [:0]u8 = try game.allocator.dupeZ(u8, "Add player");
     _ = try game.newGlobalEntity(.{
+        Name.init("ButtonAddPlayer"),
         imgui.components.Button{
             .pos = position.add_y(buttons_size.y * 6),
             .size = buttons_size,
@@ -162,7 +167,7 @@ pub fn install(game: *Game) !void {
     const foo: Foo = .{
         .bar = bar,
     };
-    _ = try game.current_scene.?.newEntity(.{foo});
+    _ = try game.current_scene.?.newEntity(.{ foo, Name.init("Foo") });
 
     std.debug.print("adding event\n", .{});
     try game.addEvent(MyEvent);
@@ -190,6 +195,7 @@ pub fn install(game: *Game) !void {
     );
     const script = lua_script.LuaScript.fromLua(game.allocator, game.lua_state, object) catch @panic("could not create object");
     _ = try game.newGlobalEntity(.{
+        Name.init("LuaTestScript"),
         script,
     });
 

@@ -225,6 +225,35 @@ pub fn allEntities(game: *Game, commands: ecs.runtime.commands.Commands) void {
     zgui.end();
 }
 
+pub fn allResources(game: *Game, commands: ecs.runtime.commands.Commands) void {
+    if (zgui.begin("resources", .{})) {
+        const type_registry = &game.type_registry;
+        const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
+        const global_archetypes = game.global_entity_storage.archetypes;
+        const view = game.getResource(EntityDetailsView);
+        const entity_view = view.get();
+        printResourceFromArchetype(
+            global_archetypes.items,
+            game.allocator,
+            type_registry,
+            "global",
+            0,
+            entity_view,
+            commands,
+        );
+        printResourceFromArchetype(
+            scene_archetypes.items,
+            game.allocator,
+            type_registry,
+            "scene",
+            @intCast(game.current_scene.?.id),
+            entity_view,
+            commands,
+        );
+    }
+    zgui.end();
+}
+
 fn printFromArchetype(
     archetypes: []const entity_storage.Archetype,
     allocator: std.mem.Allocator,
@@ -248,19 +277,125 @@ fn printFromArchetype(
                     continue;
                 }
                 var id_column_search: ?*entity_storage.ComponentColumn = null;
+                var name_column: ?*entity_storage.ComponentColumn = null;
+                var resource_marker: ?*entity_storage.ComponentColumn = null;
                 for (archetype.components.items) |*column| {
                     if (column.component_id == utils.typeId(entity.Id)) {
                         id_column_search = column;
-                        break;
                     }
+                    if (column.component_id == utils.typeId(ecs.core.Name)) {
+                        name_column = column;
+                    }
+                    if (column.component_id == utils.typeId(ecs.resource.ResourceMarker)) {
+                        resource_marker = column;
+                    }
+                }
+                if (resource_marker != null) {
+                    continue;
                 }
                 const id_column = id_column_search orelse @panic("missing entity id");
                 const entity_id: *const entity.Id = @ptrCast(@alignCast(id_column.getOpaque(entity_index)));
                 zgui.pushIntId(@intCast(entity_id.entity_id));
+                const entity_name = if (name_column) |column|
+                    @as(*const ecs.core.Name, @ptrCast(@alignCast(column.getOpaque(
+                        entity_index,
+                    )))).name
+                else
+                    "entity";
                 const entity_label: [:0]const u8 = std.fmt.allocPrintSentinel(
                     allocator,
-                    "entity {any}::{any}",
-                    .{ entity_id.scene_id, entity_id.entity_id },
+                    "{s} {any}::{any}",
+                    .{ entity_name, entity_id.scene_id, entity_id.entity_id },
+                    0,
+                ) catch @panic("could not allocate memory");
+                defer allocator.free(entity_label);
+                const show_entity = zgui.treeNode(entity_label);
+                if (zgui.beginPopupContextItem()) {
+                    if (zgui.menuItem("Details", .{})) {
+                        entity_view.add(entity_id.*) catch @panic("oom");
+                    }
+                    if (zgui.menuItem("Delete", .{})) {
+                        commands.get().removeEntity(entity_id.*) catch @panic("oom");
+                    }
+                    zgui.endPopup();
+                }
+                if (show_entity) {
+                    for (archetype.components.items) |*column| {
+                        const component_id = column.component_id;
+                        const metadata = type_registry.metadata.get(component_id);
+                        const component_pointer = column.getOpaque(entity_index);
+                        if (metadata) |meta| {
+                            const reflected = ecs.type_registry.ReflectedAny{
+                                .is_const = false,
+                                .ptr = component_pointer,
+                                .type_id = column.component_id,
+                            };
+                            printType(type_registry, meta, allocator, reflected);
+                        } else {
+                            zgui.bulletText("Unknown component", .{});
+                        }
+                    }
+                    zgui.treePop();
+                }
+                zgui.popId();
+            }
+        }
+        zgui.treePop();
+    }
+}
+
+fn printResourceFromArchetype(
+    archetypes: []const entity_storage.Archetype,
+    allocator: std.mem.Allocator,
+    type_registry: *ecs.TypeRegistry,
+    label: []const u8,
+    id: i32,
+    entity_view: *EntityDetailsView,
+    commands: ecs.runtime.commands.Commands,
+) void {
+    const group_label = std.fmt.allocPrintSentinel(
+        allocator,
+        "{s}::{any}",
+        .{ label, id },
+        0,
+    ) catch @panic("oom");
+    defer allocator.free(group_label);
+    if (zgui.treeNode(group_label)) {
+        for (archetypes) |*archetype| {
+            for (0..archetype.capacity) |entity_index| {
+                if (archetype.freelist.contains(entity_index)) {
+                    continue;
+                }
+                var id_column_search: ?*entity_storage.ComponentColumn = null;
+                var name_column: ?*entity_storage.ComponentColumn = null;
+                var resource_marker: ?*entity_storage.ComponentColumn = null;
+                for (archetype.components.items) |*column| {
+                    if (column.component_id == utils.typeId(entity.Id)) {
+                        id_column_search = column;
+                    }
+                    if (column.component_id == utils.typeId(ecs.core.Name)) {
+                        name_column = column;
+                    }
+                    if (column.component_id == utils.typeId(ecs.resource.ResourceMarker)) {
+                        resource_marker = column;
+                    }
+                }
+                if (resource_marker == null) {
+                    continue;
+                }
+                const id_column = id_column_search orelse @panic("missing entity id");
+                const entity_id: *const entity.Id = @ptrCast(@alignCast(id_column.getOpaque(entity_index)));
+                zgui.pushIntId(@intCast(entity_id.entity_id));
+                const entity_name = if (name_column) |column|
+                    @as(*const ecs.core.Name, @ptrCast(@alignCast(column.getOpaque(
+                        entity_index,
+                    )))).name
+                else
+                    "entity";
+                const entity_label: [:0]const u8 = std.fmt.allocPrintSentinel(
+                    allocator,
+                    "{s} {any}::{any}",
+                    .{ entity_name, entity_id.scene_id, entity_id.entity_id },
                     0,
                 ) catch @panic("could not allocate memory");
                 defer allocator.free(entity_label);
@@ -324,7 +459,11 @@ fn printTypeWithName(
     maybe_reflected: ?ecs.type_registry.ReflectedAny,
 ) void {
     if (maybe_reflected) |reflected| {
-        if (metadata.child_type) |child| {
+        if (metadata.kind == .string) {
+            const svalue = metadata.to_string.?(reflected.ptr, allocator) catch @panic("oom");
+            defer allocator.free(svalue);
+            zgui.bulletText("{s} = {s}", .{ name, svalue });
+        } else if (metadata.child_type) |child| {
             const child_metadata = type_registry.metadata.get(child);
             if (child_metadata) |meta| {
                 var next_reflected: ?ecs.type_registry.ReflectedAny = undefined;

@@ -35,6 +35,7 @@ pub const TypeKind = enum {
     optional,
     tagged_union,
     @"enum",
+    string,
 };
 
 pub const ReflectionMetaData = struct {
@@ -185,6 +186,8 @@ pub const TypeRegistry = struct {
         try self.registerValueTypeWithToString(usize, allocPrint(usize));
         try self.registerValueTypeWithToString(isize, allocPrint(isize));
         try self.registerValueTypeWithToString(i64, allocPrint(i64));
+        try self.registerValueTypeWithToString(i32, allocPrint(i32));
+        try self.registerValueTypeWithToString(u32, allocPrint(u32));
         try self.registerValueTypeWithToString(u64, allocPrint(u64));
         try self.registerValueTypeWithToString(bool, allocPrint(bool));
         try self.registerValueTypeWithToString(f64, allocPrint(f64));
@@ -192,10 +195,10 @@ pub const TypeRegistry = struct {
         try self.registerValueTypeWithToString(u8, allocPrint(u8));
         try self.registerWithMetaData([]const u8, .{
             .name = @typeName([]const u8),
-            .kind = .slice,
+            .kind = .string,
             .child_type = utils.typeId(u8),
             .set = simpleValueSetter([]const u8),
-            .to_string = allocPrint([]const u8),
+            .to_string = &strToStr,
             .fields = try self.allocator.dupe(ReflectionField, &.{
                 .{
                     .name = "len",
@@ -509,4 +512,9 @@ fn enumFromInt(comptime T: type) *const fn (*anyopaque, usize) void {
             self.* = new_val;
         }
     }.enumFromInt;
+}
+
+fn strToStr(this: *anyopaque, allocator: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
+    const self: *[]const u8 = @ptrCast(@alignCast(this));
+    return std.fmt.allocPrint(allocator, "\"{s}\"", .{self.*});
 }

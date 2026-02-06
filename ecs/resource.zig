@@ -1,3 +1,5 @@
+const ecs = @import("prelude.zig");
+
 pub fn Resource(comptime T: type) type {
     return struct {
         pub const is_resource_marker = void{};
@@ -41,3 +43,8 @@ pub fn ProxyMetaData(comptime T: type) type {
         pub const MappedResource = T;
     };
 }
+
+pub const ResourceMarker = struct {
+    pub const component_info = ecs.Component(ResourceMarker);
+    marker: ecs.Marker = .empty,
+};

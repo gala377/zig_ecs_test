@@ -152,8 +152,10 @@ pub const Game = struct {
             .log = &.{},
         });
 
+        try self.type_registry.registerStruct(GameActions);
         try self.type_registry.registerStruct(runtime.allocators.GlobalAllocator);
         try self.type_registry.registerStruct(runtime.allocators.FrameAllocator);
+        try self.type_registry.registerType(ecs.resource.ResourceMarker);
         try self.addResource(commands.init(self));
         try self.addSystems(.post_update, &.{
             ecs.system.labeledSystem("core.applyGameActions", applyGameActions),
@@ -162,6 +164,7 @@ pub const Game = struct {
         try self.addSystems(.tear_down, &.{
             ecs.system.labeledSystem("runtime.allocators.freeFrameAllocator", runtime.allocators.freeFrameAllocator),
         });
+        try core.install(self);
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
@@ -251,7 +254,12 @@ pub const Game = struct {
     }
 
     pub fn addResource(self: *Self, resource: anytype) !void {
-        _ = try self.newGlobalEntity(.{resource});
+        const tname = @typeName(@TypeOf(resource));
+        _ = try self.newGlobalEntity(.{
+            resource,
+            ecs.resource.ResourceMarker{},
+            ecs.core.Name.init(tname),
+        });
     }
 
     pub fn addEvent(self: *Self, comptime T: type) !void {
@@ -265,6 +273,8 @@ pub const Game = struct {
                 .events = .empty,
             },
         });
+        try self.type_registry.registerType(runtime.events.EventBuffer(T));
+        try self.type_registry.registerType(runtime.events.EventWriterBuffer(T));
         try self.addSystems(
             .tear_down,
             &.{runtime.events.eventSystem(T)},
@@ -515,6 +525,8 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.win
     try raylib.install(game, window_options, true);
     try ecs.zgui.install(game);
     try game.addResource(LuaRuntime{ .lua = &game.lua_state });
+    try ecs.lua.install(game);
+    try ecs.imgui.install(game);
     if (export_lua) {
         // TODO: this one is weird as we add game actions in the runtime
         // but we expose them to lua here
@@ -526,13 +538,7 @@ pub fn addDefaultPlugins(game: *Game, export_lua: bool, window_options: core.win
         game.exportComponent(core.Color);
         DynamicQuery.registerMetaTable(game.lua_state);
     }
-
-    try game.type_registry.registerStruct(GameActions);
     try game.type_registry.registerStruct(entity.Id);
-    try game.type_registry.registerStruct(core.Vec2);
-    try game.type_registry.registerStruct(core.Position);
-    try game.type_registry.registerStruct(core.Style);
-    try game.type_registry.registerStruct(core.Color);
     try game.type_registry.registerStruct(LuaRuntime);
 }
 

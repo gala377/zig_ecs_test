@@ -35,6 +35,7 @@ pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
     try game.schedule.addScheduleAfter(.tear_down, RaylibSchedule{}, .{});
 
     try game.addResource(options);
+    try game.type_registry.registerType(WindowOptions);
     try game.addSystemToSchedule(.setup, RaylibSchedule{}, initWindow);
     try game.addSystemToSchedule(.update, RaylibSchedule{}, updateClose);
     try game.addSystemToSchedule(.pre_render, RaylibSchedule{}, beginDraw);

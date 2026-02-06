@@ -57,9 +57,11 @@ pub fn install(game: *Game) !void {
     try game.addSystemToSchedule(.post_render, ZguiDockSpaceSchedule{}, zguiDockSpaceEnd);
 
     try game.addResource(editor.EntityDetailsView.init(game.allocator));
+    try game.type_registry.registerType(editor.EntityDetailsView);
     try game.addSystem(.render, editor.allEntities);
     try game.addSystem(.render, editor.allSystems);
     try game.addSystem(.render, editor.showEntityDetails);
+    try game.addSystem(.render, editor.allResources);
 }
 
 fn zguiBegin() void {

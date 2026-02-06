@@ -50,7 +50,8 @@ fn runGame(allocator: std.mem.Allocator) !void {
             },
         },
     );
-    try imgui.exportLua(&game);
+    try imgui.install(&game);
+    imgui.exportLua(&game);
     try logic.install(&game);
 
     try game.run();
