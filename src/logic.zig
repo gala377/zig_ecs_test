@@ -416,9 +416,14 @@ pub const RunOnce = struct {
 
 pub const Foo = struct {
     pub const component_info = Component(Foo);
-    pub const lua_info = ExportLua(Foo, .{});
+    pub const lua_info = ExportLua(Foo, .{
+        .ignored_fields = &.{
+            .tag,
+        },
+    });
 
     bar: *Bar,
+    tag: enum { tag_a, tag_b, tag_c } = .tag_c,
 
     pub fn setBar(self: *Foo, bar: Bar, allocator: std.mem.Allocator) bool {
         _ = allocator;

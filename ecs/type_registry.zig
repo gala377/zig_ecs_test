@@ -33,6 +33,8 @@ pub const TypeKind = enum {
     pointer,
     slice,
     optional,
+    tagged_union,
+    @"enum",
 };
 
 pub const ReflectionMetaData = struct {
@@ -55,8 +57,12 @@ pub const ReflectionMetaData = struct {
     ref: ?*const fn (*OpaqueSelf, ReflectedAny) void = null,
     /// If optional - can be used to get value underneath
     deref_opt: ?*const fn (*OpaqueSelf) ?ReflectedAny = null,
-    ///
+    /// Representation as string
     to_string: ?*const fn (*OpaqueSelf, std.mem.Allocator) std.mem.Allocator.Error![]const u8 = null,
+    /// If enum / tagged union - get the enum tag as int
+    tag_to_int: ?*const fn (*OpaqueSelf) usize = null,
+    /// If enum - set it's tag from int,
+    set_tag_from_int: ?*const fn (*OpaqueSelf, tag: usize) void = null,
     /// component vtable if any
     component_vtable: ?*const component.Opaque.VTable = null,
 };
@@ -98,6 +104,9 @@ pub const TypeRegistry = struct {
                     },
                 }
             },
+            .@"enum" => {
+                try self.registerEnum(T);
+            },
             .optional => |opt| {
                 try self.registerOptional(T);
                 return self.registerType(opt.child);
@@ -109,6 +118,19 @@ pub const TypeRegistry = struct {
                 std.debug.print("{s} not supported for type_registry yet\n", .{@tagName(t)});
             },
         }
+    }
+
+    pub fn registerEnum(self: *TypeRegistry, comptime T: type) !void {
+        try self.registerPointer(*T);
+        try self.registerPointer(*const T);
+        try self.registerWithMetaData(T, .{
+            .name = @typeName(T),
+            .kind = .@"enum",
+            .set = simpleValueSetter(T),
+            .to_string = enumToString(T),
+            .tag_to_int = tagToInt(T),
+            .set_tag_from_int = enumFromInt(T),
+        });
     }
 
     pub fn registerOptional(self: *TypeRegistry, comptime T: type) std.mem.Allocator.Error!void {
@@ -124,6 +146,7 @@ pub const TypeRegistry = struct {
             .deref_opt = deref_opt(T),
         });
         try self.registerPointer(*T);
+        try self.registerPointer(*const T);
     }
 
     pub fn registerStruct(self: *TypeRegistry, comptime T: type) std.mem.Allocator.Error!void {
@@ -134,6 +157,7 @@ pub const TypeRegistry = struct {
         const meta = try structMetaData(T, self.allocator);
         try self.registerWithMetaData(T, meta);
         try self.registerType(*T);
+        try self.registerType(*const T);
         const info = @typeInfo(T).@"struct";
         inline for (info.fields) |field| {
             try self.registerType(field.type);
@@ -212,6 +236,7 @@ pub const TypeRegistry = struct {
             .to_string = to_string,
         });
         try self.registerType(*T);
+        try self.registerType(*const T);
     }
 
     pub fn registerWithMetaData(self: *TypeRegistry, comptime T: type, metadata: ReflectionMetaData) std.mem.Allocator.Error!void {
@@ -455,4 +480,33 @@ fn allocPrint(comptime T: type) *const fn (*anyopaque, std.mem.Allocator) std.me
             return std.fmt.allocPrint(allocator, "{any}", .{as_t.*});
         }
     }.to_string;
+}
+
+fn enumToString(comptime T: type) *const fn (*anyopaque, std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
+    return &struct {
+        fn enumToString(this: *anyopaque, allocator: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
+            const self: *T = @ptrCast(@alignCast(this));
+            const name = @tagName(self.*);
+            return allocator.dupe(u8, name);
+        }
+    }.enumToString;
+}
+
+fn tagToInt(comptime T: type) *const fn (*anyopaque) usize {
+    return &struct {
+        fn tagToInt(this: *anyopaque) usize {
+            const self: *T = @ptrCast(@alignCast(this));
+            return @intFromEnum(self.*);
+        }
+    }.tagToInt;
+}
+
+fn enumFromInt(comptime T: type) *const fn (*anyopaque, usize) void {
+    return &struct {
+        fn enumFromInt(this: *anyopaque, tag: usize) void {
+            const self: *T = @ptrCast(@alignCast(this));
+            const new_val: T = @enumFromInt(tag);
+            self.* = new_val;
+        }
+    }.enumFromInt;
 }
