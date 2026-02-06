@@ -56,6 +56,7 @@ pub fn install(game: *Game) !void {
     try game.addLabeledSystemToSchedule(.post_render, ZguiDockSpaceSchedule{}, "ecs.zgui.zguiDockSpaceEnd", zguiDockSpaceEnd);
 
     try game.addResource(editor.EntityDetailsView.init(game.allocator));
+    try game.addResource(editor.PrimiteTypeStorage.init(game.allocator) catch @panic("oom"));
     try game.type_registry.registerType(editor.EntityDetailsView);
     try game.addSystems(.render, &.{
         ecs.system.labeledSystem("ecs.zgui.editor.allEntities", editor.allEntities),

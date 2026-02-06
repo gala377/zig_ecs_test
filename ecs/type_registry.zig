@@ -38,6 +38,11 @@ pub const TypeKind = enum {
     string,
 };
 
+pub const EnumTag = struct {
+    tag: usize,
+    name: []const u8,
+};
+
 pub const ReflectionMetaData = struct {
     /// name of this type
     name: []const u8,
@@ -46,6 +51,8 @@ pub const ReflectionMetaData = struct {
     kind: TypeKind,
     /// id of a child type if any,
     child_type: ?usize = null,
+    /// if enum list of possible tags
+    tags: []const EnumTag = &.{},
     /// information about fields if any
     fields: []const ReflectionField = &.{},
     /// set value of this field from any value
@@ -124,9 +131,25 @@ pub const TypeRegistry = struct {
     pub fn registerEnum(self: *TypeRegistry, comptime T: type) !void {
         try self.registerPointer(*T);
         try self.registerPointer(*const T);
+        const info = @typeInfo(T);
+        const tags = info.@"enum".fields;
+        const static_tags = comptime blk: {
+            var temp_tags: [tags.len]EnumTag = undefined;
+            for (tags, 0..) |tag, i| {
+                temp_tags[i] = .{
+                    .tag = tag.value,
+                    .name = tag.name,
+                };
+            }
+            // without this line we cannot evaluate this within comptime
+            // for some reason
+            const final_array = temp_tags;
+            break :blk &final_array;
+        };
         try self.registerWithMetaData(T, .{
             .name = @typeName(T),
             .kind = .@"enum",
+            .tags = static_tags,
             .set = simpleValueSetter(T),
             .to_string = enumToString(T),
             .tag_to_int = tagToInt(T),
@@ -381,8 +404,8 @@ fn fieldGetter(
     return &struct {
         fn get(this: *anyopaque) ReflectedAny {
             const self: *T = @ptrCast(@alignCast(this));
-            const fval = &@field(self, f.name);
-            const ptr_id = utils.typeId(@TypeOf(f.type));
+            const fval: *f.type = &@field(self, f.name);
+            const ptr_id = utils.typeId(f.type);
             return .{
                 .ptr = @ptrCast(@alignCast(@constCast(fval))),
                 .type_id = ptr_id,
