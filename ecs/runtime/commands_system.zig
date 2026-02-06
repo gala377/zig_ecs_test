@@ -18,7 +18,7 @@ pub fn create_entities(commands_res: commands.Commands) void {
         };
     }
     for (cmd.remove_entities.items) |id| {
-        std.debug.print("Remocing entity {any}\n", .{id});
+        std.debug.print("Removing entity {any}\n", .{id});
     }
     cmd.game.removeEntities(cmd.remove_entities.items) catch {
         @panic("removing entity returned error");

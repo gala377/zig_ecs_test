@@ -48,20 +48,21 @@ pub fn install(game: *Game) !void {
         ZguiDockSpaceSchedule{},
         .{ZguiSchedule{}},
     );
-    try game.addSystemToSchedule(.setup, ZguiSchedule{}, initZgui);
-    //try game.addSystemToSchedule(.tear_down, ZguiSchedule{}, deinitZgui);
-    try game.addSystemToSchedule(.pre_render, ZguiSchedule{}, zguiBegin);
-    try game.addSystemToSchedule(.post_render, ZguiSchedule{}, zguiEnd);
-    try game.addSystemToSchedule(.close, ZguiSchedule{}, deinitZgui);
-    try game.addSystemToSchedule(.pre_render, ZguiDockSpaceSchedule{}, zguiDockSpace);
-    try game.addSystemToSchedule(.post_render, ZguiDockSpaceSchedule{}, zguiDockSpaceEnd);
+    try game.addLabeledSystemToSchedule(.setup, ZguiSchedule{}, "ecs.zgui.initZgui", initZgui);
+    try game.addLabeledSystemToSchedule(.pre_render, ZguiSchedule{}, "ecs.zgui.zguiBegin", zguiBegin);
+    try game.addLabeledSystemToSchedule(.post_render, ZguiSchedule{}, "ecs.zgui.zguiEnd", zguiEnd);
+    try game.addLabeledSystemToSchedule(.close, ZguiSchedule{}, "ecs.zgui.deinitZgui", deinitZgui);
+    try game.addLabeledSystemToSchedule(.pre_render, ZguiDockSpaceSchedule{}, "ecs.zgui.zguiDockSpace", zguiDockSpace);
+    try game.addLabeledSystemToSchedule(.post_render, ZguiDockSpaceSchedule{}, "ecs.zgui.zguiDockSpaceEnd", zguiDockSpaceEnd);
 
     try game.addResource(editor.EntityDetailsView.init(game.allocator));
     try game.type_registry.registerType(editor.EntityDetailsView);
-    try game.addSystem(.render, editor.allEntities);
-    try game.addSystem(.render, editor.allSystems);
-    try game.addSystem(.render, editor.showEntityDetails);
-    try game.addSystem(.render, editor.allResources);
+    try game.addSystems(.render, &.{
+        ecs.system.labeledSystem("ecs.zgui.editor.allEntities", editor.allEntities),
+        ecs.system.labeledSystem("ecs.zgui.editor.allSystems", editor.allSystems),
+        ecs.system.labeledSystem("ecs.zgui.editor.showEntityDetails", editor.showEntityDetails),
+        ecs.system.labeledSystem("ecs.zgui.editor.allResources", editor.allResources),
+    });
 }
 
 fn zguiBegin() void {

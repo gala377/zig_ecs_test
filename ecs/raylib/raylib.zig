@@ -36,22 +36,22 @@ pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
 
     try game.addResource(options);
     try game.type_registry.registerType(WindowOptions);
-    try game.addSystemToSchedule(.setup, RaylibSchedule{}, initWindow);
-    try game.addSystemToSchedule(.update, RaylibSchedule{}, updateClose);
-    try game.addSystemToSchedule(.pre_render, RaylibSchedule{}, beginDraw);
+
+    try game.addLabeledSystemToSchedule(.setup, RaylibSchedule{}, "ecs.raylib.initWindow", initWindow);
+    try game.addLabeledSystemToSchedule(.update, RaylibSchedule{}, "ecs.raylib.updateClose", updateClose);
+    try game.addLabeledSystemToSchedule(.pre_render, RaylibSchedule{}, "ecs.raylib.beginDraw", beginDraw);
 
     try game.addSystemsToSchedule(.render, RaylibSchedule{}, &.{
-        system.func(draw_circles),
-        system.func(draw_rectangle),
+        system.labeledSystem("ecs.raylib.draw_circles", draw_circles),
+        system.labeledSystem("ecs.raylib.draw_rectangle", draw_rectangle),
+        system.labeledSystem("ecs.raylib.imguiButtons", imguiButtons),
     });
 
-    try game.addSystemToSchedule(.post_render, RaylibSchedule{}, endDraw);
-    try game.addSystemToSchedule(.tear_down, RaylibSchedule{}, closeWindow);
-
-    try game.addSystemToSchedule(.render, RaylibSchedule{}, imguiButtons);
+    try game.addLabeledSystemToSchedule(.post_render, RaylibSchedule{}, "ecs.raylib.endDraw", endDraw);
+    try game.addLabeledSystemToSchedule(.tear_down, RaylibSchedule{}, "ecs.raylib.closeWindow", closeWindow);
 
     if (show_fps) {
-        try game.addSystemToSchedule(.render, RaylibSchedule{}, showFps);
+        try game.addLabeledSystemToSchedule(.render, RaylibSchedule{}, "ecs.raylib.showFps", showFps);
     }
 }
 

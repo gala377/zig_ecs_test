@@ -294,12 +294,10 @@ fn printFromArchetype(
                     continue;
                 }
                 const id_column = id_column_search orelse @panic("missing entity id");
-                const entity_id: *const entity.Id = @ptrCast(@alignCast(id_column.getOpaque(entity_index)));
+                const entity_id: entity.Id = id_column.getAs(entity_index, entity.Id).*;
                 zgui.pushIntId(@intCast(entity_id.entity_id));
                 const entity_name = if (name_column) |column|
-                    @as(*const ecs.core.Name, @ptrCast(@alignCast(column.getOpaque(
-                        entity_index,
-                    )))).name
+                    column.getAs(entity_index, ecs.core.Name).name
                 else
                     "entity";
                 const entity_label: [:0]const u8 = std.fmt.allocPrintSentinel(
@@ -309,13 +307,22 @@ fn printFromArchetype(
                     0,
                 ) catch @panic("could not allocate memory");
                 defer allocator.free(entity_label);
+                if (zgui.smallButton("E")) {
+                    entity_view.add(entity_id) catch @panic("oom");
+                }
+                zgui.sameLine(.{});
+                if (zgui.smallButton("X")) {
+                    std.debug.print("Adding entity to remove {any}\n", .{entity_id});
+                    commands.get().removeEntity(entity_id) catch @panic("oom");
+                }
+                zgui.sameLine(.{});
                 const show_entity = zgui.treeNode(entity_label);
                 if (zgui.beginPopupContextItem()) {
                     if (zgui.menuItem("Details", .{})) {
-                        entity_view.add(entity_id.*) catch @panic("oom");
+                        entity_view.add(entity_id) catch @panic("oom");
                     }
                     if (zgui.menuItem("Delete", .{})) {
-                        commands.get().removeEntity(entity_id.*) catch @panic("oom");
+                        commands.get().removeEntity(entity_id) catch @panic("oom");
                     }
                     zgui.endPopup();
                 }

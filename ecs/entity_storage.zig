@@ -155,7 +155,6 @@ pub const Archetype = struct {
     }
 
     pub fn remove(self: *@This(), index: usize) !void {
-        std.debug.print("Self is {any}\n", .{self.*});
         std.debug.print("Removign under index {any}\n", .{index});
         try self.freelist.put(index, 0);
     }
@@ -168,11 +167,13 @@ pub const Archetype = struct {
         return index;
     }
 
-    // Inserts component ats the given space, does not free the memory allocated to the component
+    // Inserts component ts the given space, does not free the memory allocated to the component
     pub fn insertUncheked(self: @This(), index: usize, components: []const component.Opaque) void {
         for (components) |comp| {
             const component_id = comp.component_id;
-            const column_index = self.components_map.get(component_id) orelse unreachable;
+            const column_index = self.components_map.get(component_id) orelse {
+                @panic("trying to insert component into archetype without this component");
+            };
             const pointer_many: [*]const u8 = @ptrCast(@alignCast(comp.pointer));
             const pointer: []const u8 = pointer_many[0..comp.vtable.size];
             self.components.items[column_index].insertAtUnchecked(index, component_id, pointer);

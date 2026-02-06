@@ -152,10 +152,11 @@ pub const Game = struct {
             .log = &.{},
         });
 
-        try self.type_registry.registerStruct(GameActions);
-        try self.type_registry.registerStruct(runtime.allocators.GlobalAllocator);
-        try self.type_registry.registerStruct(runtime.allocators.FrameAllocator);
+        try self.type_registry.registerType(GameActions);
+        try self.type_registry.registerType(runtime.allocators.GlobalAllocator);
+        try self.type_registry.registerType(runtime.allocators.FrameAllocator);
         try self.type_registry.registerType(ecs.resource.ResourceMarker);
+        try self.type_registry.registerType(commands);
         try self.addResource(commands.init(self));
         try self.addSystems(.post_update, &.{
             ecs.system.labeledSystem("core.applyGameActions", applyGameActions),
@@ -349,6 +350,20 @@ pub const Game = struct {
         try self.schedule.add(
             phase,
             ecs.system.func(sys),
+        );
+    }
+
+    pub fn addLabeledSystemToSchedule(
+        self: *Self,
+        phase: Schedule.Phase,
+        label: anytype,
+        name: []const u8,
+        comptime sys: anytype,
+    ) !void {
+        try self.schedule.addToSchedule(
+            phase,
+            label,
+            ecs.system.labeledSystem(name, sys),
         );
     }
 

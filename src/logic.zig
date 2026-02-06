@@ -177,18 +177,18 @@ pub fn install(game: *Game) !void {
         \\ local f = {}
         \\ function f:Init()
         \\   self.msg = "hello"
-        \\   print("IN LUA IN LUA")
-        \\   print("executed")
+        \\   --print("IN LUA IN LUA")
+        \\   --print("executed")
         \\   zig_yield("dispatch to zig: " .. self.msg)
-        \\   print("past yield")
-        \\   self.msg = "yoyoyo" 
+        \\   --print("past yield")
+        \\   --self.msg = "yoyoyo" 
         \\   self.counter = 0
         \\ end
         \\ function f:Update()
         \\  self.counter = self.counter + 1
         \\  if self.counter % 100 == 0 then
         \\    self.counter = 1
-        \\    zig_yield(self.msg)
+        \\    --zig_yield(self.msg)
         \\  end
         \\ end
         \\ return f
@@ -229,22 +229,16 @@ pub const TestItem = struct {
 pub fn spawn_on_click(
     commands: Commands,
     buttons: *Query(.{ Button, ButtonSpawn }),
-    entities: *Query(.{TestItem}),
+    things: *Query(.{ EntityId, Circle }),
 ) void {
-    const button: *Button, _ = buttons.single();
-    const cmd: *ecs.commands = commands.get();
-    if (button.clicked) {
-        var max: usize = 0;
-        while (entities.next()) |ent| {
-            const test_item: *TestItem = ent[0];
-            if (test_item.index > max) {
-                max = test_item.index;
+    while (buttons.next()) |q1| {
+        const b, _ = q1;
+        if (b.clicked) {
+            while (things.next()) |q| {
+                const e, _ = q;
+                commands.get().removeEntity(e.*) catch @panic("oom");
             }
         }
-        const next_index = max + 1;
-        _ = cmd.addSceneEntity(.{TestItem{
-            .index = next_index,
-        }}) catch @panic("could not make new scene entity");
     }
 }
 
@@ -254,7 +248,7 @@ pub fn test_item_exists(q: *Query(.{TestItem})) bool {
 
 pub fn spam_me(q: *Query(.{TestItem})) void {
     _ = q;
-    std.debug.print("spam\n", .{});
+    //std.debug.print("spam\n", .{});
 }
 
 const NewCircle = struct {
@@ -293,7 +287,7 @@ pub fn read_new_entities(entities: *Query(.{TestItem})) void {
         var entity: *TestItem = e[0];
         if (!entity.already_logged) {
             entity.already_logged = true;
-            std.debug.print("Saw new entity {}\n", .{entity.index});
+            //std.debug.print("Saw new entity {}\n", .{entity.index});
         }
     }
 }
@@ -324,7 +318,8 @@ pub fn remove_last_entity(
 
 pub fn read_events(events: *EventReader(MyEvent)) void {
     while (events.next()) |e| {
-        std.log.info("Got event that entity {} got removed", .{e});
+        _ = e;
+        // std.log.info("Got event that entity {} got removed", .{e});
     }
 }
 
@@ -496,15 +491,15 @@ fn finish_run(cond: Resource(RunOnce)) void {
 
 fn chain1(cond: Resource(RunOnce)) void {
     _ = cond;
-    std.debug.print("hello 1\n", .{});
+    // std.debug.print("hello 1\n", .{});
 }
 
 fn chain2(cond: Resource(RunOnce)) void {
     _ = cond;
-    std.debug.print("hello 2\n", .{});
+    // std.debug.print("hello 2\n", .{});
 }
 
 fn chain3(cond: Resource(RunOnce)) void {
     _ = cond;
-    std.debug.print("hello 3\n", .{});
+    // std.debug.print("hello 3\n", .{});
 }
