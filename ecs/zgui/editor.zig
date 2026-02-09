@@ -594,6 +594,9 @@ fn printValue(
                         .uint64 => {
                             intInput(u64, name, reflected, allocator);
                         },
+                        .bool => {
+                            boolInput(name, reflected, allocator);
+                        },
                         else => {
                             const repr = to_string(reflected.ptr, allocator) catch @panic("oom");
                             defer allocator.free(repr);
@@ -611,6 +614,24 @@ fn printValue(
     } else {
         // not a pointer and doesn't have fields so we can safely print the value here
         zgui.bulletText("{s} = unknown", .{name});
+    }
+}
+
+fn boolInput(name: [:0]const u8, reflected: ecs.type_registry.ReflectedAny, allocator: std.mem.Allocator) void {
+    const boolValue: *bool = @ptrCast(@alignCast(reflected.ptr));
+    var returned: bool = boolValue.*;
+    zgui.alignTextToFramePadding();
+    zgui.bulletText("{s} = ", .{name});
+    zgui.sameLine(.{});
+    const label: [:0]const u8 = std.fmt.allocPrintSentinel(
+        allocator,
+        "##{any}",
+        .{reflected.ptr},
+        0,
+    ) catch @panic("oom");
+    defer allocator.free(label);
+    if (zgui.checkbox(label, .{ .v = &returned })) {
+        boolValue.* = returned;
     }
 }
 
