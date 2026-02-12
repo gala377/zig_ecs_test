@@ -116,140 +116,6 @@ pub fn showEntityDetails(game: *Game) void {
     }
 }
 
-// pub const EntityDetailsView = struct {
-//     pub const component_info = ecs.Component(EntityDetailsView);
-//     allocator: std.mem.Allocator,
-//     entities: std.ArrayList(entity.Id),
-//
-//     pub fn init(allocator: std.mem.Allocator) EntityDetailsView {
-//         return .{
-//             .allocator = allocator,
-//             .entities = .empty,
-//         };
-//     }
-//
-//     pub fn add(self: *EntityDetailsView, id: entity.Id) !void {
-//         return self.entities.append(self.allocator, id);
-//     }
-//
-//     pub fn remove(self: *EntityDetailsView, id: entity.Id) void {
-//         var index: ?usize = null;
-//         for (self.entities.items, 0..) |e, idx| {
-//             if (e.scene_id == id.scene_id and e.entity_id == id.entity_id) {
-//                 index = idx;
-//                 break;
-//             }
-//         }
-//         if (index) |idx| {
-//             _ = self.entities.orderedRemove(idx);
-//         }
-//     }
-//
-//     pub fn deinit(self: *EntityDetailsView, allocator: std.mem.Allocator) void {
-//         _ = allocator;
-//         self.entities.deinit(self.allocator);
-//     }
-// };
-
-// pub fn showEntityDetails(game: *Game) void {
-//     const view = game.getResource(EntityDetailsView);
-//     const primitives = game.getResource(PrimiteTypeStorage);
-//     const type_registry = &game.type_registry;
-//     const entity_view = view.get();
-//     const entities: []const entity.Id = entity_view.entities.items;
-//     var remove_views: std.ArrayList(entity.Id) = .empty;
-//     defer remove_views.deinit(game.allocator);
-//     for (entities, 0..) |e, entity_index| {
-//         const scene = if (game.current_scene) |*s| s else null;
-//         if (e.scene_id == 0) {
-//             // global entity
-//             const storage = &game.global_entity_storage;
-//             const archetype_record = storage.entity_map.get(e);
-//             if (archetype_record) |record| {
-//                 if (entityDetailsWindow(
-//                     e,
-//                     entity_index,
-//                     record,
-//                     type_registry,
-//                     storage,
-//                     game.allocator,
-//                     primitives.get(),
-//                 )) {
-//                     remove_views.append(game.allocator, e) catch @panic("oom");
-//                 }
-//             } else {
-//                 if (showEmptyWindow(
-//                     e,
-//                     entity_index,
-//                     "Entity has been deleted",
-//                     game.allocator,
-//                 )) {
-//                     remove_views.append(game.allocator, e) catch {
-//                         @panic("oom");
-//                     };
-//                 }
-//             }
-//         } else {
-//             // scene entity
-//             if (scene) |s| {
-//                 if (s.id == e.scene_id) {
-//                     const storage = &s.entity_storage;
-//                     const archetype_record = storage.entity_map.get(e);
-//                     if (archetype_record) |record| {
-//                         if (entityDetailsWindow(
-//                             e,
-//                             entity_index,
-//                             record,
-//                             type_registry,
-//                             storage,
-//                             game.allocator,
-//                             primitives.get(),
-//                         )) {
-//                             remove_views.append(game.allocator, e) catch @panic("oom");
-//                         }
-//                     } else {
-//                         if (showEmptyWindow(
-//                             e,
-//                             entity_index,
-//                             "Entity has been deleted",
-//                             game.allocator,
-//                         )) {
-//                             remove_views.append(game.allocator, e) catch {
-//                                 @panic("oom");
-//                             };
-//                         }
-//                     }
-//                 } else {
-//                     if (showEmptyWindow(
-//                         e,
-//                         entity_index,
-//                         "Active scene is not the same as entities scene",
-//                         game.allocator,
-//                     )) {
-//                         remove_views.append(game.allocator, e) catch {
-//                             @panic("oom");
-//                         };
-//                     }
-//                 }
-//             } else {
-//                 if (showEmptyWindow(
-//                     e,
-//                     entity_index,
-//                     "This is a scene entity but there is no scene active",
-//                     game.allocator,
-//                 )) {
-//                     remove_views.append(game.allocator, e) catch {
-//                         @panic("oom");
-//                     };
-//                 }
-//             }
-//         }
-//     }
-//     for (remove_views.items) |id| {
-//         entity_view.remove(id);
-//     }
-// }
-
 fn entityDetailsWindow(
     e: entity.Id,
     entity_index: usize,
@@ -708,10 +574,11 @@ fn printValue(
                         .bool => {
                             boolInput(name, reflected, allocator);
                         },
-                        else => {
-                            const repr = to_string(reflected.ptr, allocator) catch @panic("oom");
-                            defer allocator.free(repr);
-                            zgui.bulletText("{s} = {s}", .{ name, repr });
+                        .float32 => {
+                            floatInput(f32, name, reflected, allocator);
+                        },
+                        .float64 => {
+                            floatInput(f64, name, reflected, allocator);
                         },
                     }
                     zgui.popId();
@@ -743,6 +610,36 @@ fn boolInput(name: [:0]const u8, reflected: ecs.type_registry.ReflectedAny, allo
     defer allocator.free(label);
     if (zgui.checkbox(label, .{ .v = &returned })) {
         boolValue.* = returned;
+    }
+}
+
+fn floatInput(comptime T: type, name: [:0]const u8, reflected: ecs.type_registry.ReflectedAny, allocator: std.mem.Allocator) void {
+    const intValue: *T = @ptrCast(@alignCast(reflected.ptr));
+    zgui.alignTextToFramePadding();
+    zgui.bulletText("{s} = ", .{name});
+    zgui.sameLine(.{});
+    zgui.setNextItemWidth(100.0);
+    const label: [:0]const u8 = std.fmt.allocPrintSentinel(
+        allocator,
+        "##{any}",
+        .{reflected.ptr},
+        0,
+    ) catch @panic("oom");
+    defer allocator.free(label);
+    if (comptime T == f32) {
+        var returned: f32 = intValue.*;
+        const changed = zgui.inputFloat(label, .{ .v = &returned });
+        if (zgui.isItemDeactivatedAfterEdit() or changed) {
+            intValue.* = returned;
+        }
+    } else if (comptime T == f64) {
+        var returned: f64 = intValue.*;
+        const changed = zgui.inputDouble(label, .{ .v = &returned });
+        if (zgui.isItemDeactivatedAfterEdit() or changed) {
+            intValue.* = returned;
+        }
+    } else {
+        @compileError("only f32 and f64 are supported");
     }
 }
 
