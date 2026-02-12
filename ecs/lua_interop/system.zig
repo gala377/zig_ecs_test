@@ -188,11 +188,9 @@ fn noSubsystems(this: ?*anyopaque) []const System {
     return &.{};
 }
 
-fn systemRun(context: ?*anyopaque, game: *Game) void {
+fn systemRun(context: ?*anyopaque, game: *Game) anyerror!void {
     const self = @as(*Self, @ptrCast(@alignCast(context)));
-    self.run(game) catch |e| {
-        std.debug.panic("panic while executing a lua system. LUA ERROR {any}\n", .{e});
-    };
+    return self.run(game);
 }
 
 fn systemDeinit(context: ?*anyopaque) void {

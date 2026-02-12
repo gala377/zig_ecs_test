@@ -126,13 +126,15 @@ pub fn draw_rectangle(rectangles: *Query(.{
 
 // show fps
 
-fn showFps() void {
+fn showFps() !void {
     const fps = rl.getFPS();
     const frame_time = rl.getFrameTime();
     var buf: [10000]u8 = undefined;
-    const numAsString = std.fmt.bufPrintZ(&buf, "FPS: {:5}, frame time: {:.10}", .{ fps, frame_time }) catch {
-        @panic("could not create fps text");
-    };
+    const numAsString = try std.fmt.bufPrintZ(
+        &buf,
+        "FPS: {:5}, frame time: {:.10}",
+        .{ fps, frame_time },
+    );
     rl.drawText(numAsString, 0, 0, 16, rl.Color.white);
 }
 

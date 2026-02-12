@@ -6,7 +6,7 @@ const utils = ecs.utils;
 const Game = ecs.Game;
 
 pub const SystemVTable = struct {
-    run: *const fn (?*anyopaque, *Game) void,
+    run: *const fn (?*anyopaque, *Game) anyerror!void,
     deinit: *const fn (?*anyopaque) void,
     subsystems: *const fn (?*anyopaque) []const System,
 };
@@ -19,8 +19,8 @@ pub const System = struct {
     context: ?*anyopaque,
     vtable: *const SystemVTable,
 
-    pub fn run(self: *const Self, game: *Game) void {
-        self.vtable.run(self.context, game);
+    pub fn run(self: *const Self, game: *Game) anyerror!void {
+        return self.vtable.run(self.context, game);
     }
 
     pub fn deinit(self: *const Self) void {
@@ -41,10 +41,10 @@ pub const System = struct {
             .allocator = allocator,
         };
         const run_impl = struct {
-            pub fn run(ptr: ?*anyopaque, game: *Game) void {
+            pub fn run(ptr: ?*anyopaque, game: *Game) anyerror!void {
                 const ctx: *ConditionalContext = @ptrCast(@alignCast(ptr.?));
-                if (condition(null, game)) {
-                    ctx.inner_system.run(game);
+                if (try condition(null, game)) {
+                    try ctx.inner_system.run(game);
                 }
             }
         }.run;
@@ -81,10 +81,10 @@ const ChainContext = struct {
     systems: []const System,
     allocator: std.mem.Allocator,
 
-    pub fn run(ptr: ?*anyopaque, game: *Game) void {
+    pub fn run(ptr: ?*anyopaque, game: *Game) anyerror!void {
         const context: *ChainContext = @ptrCast(@alignCast(ptr.?));
         for (context.systems) |sys| {
-            sys.run(game);
+            try sys.run(game);
         }
     }
 
@@ -144,18 +144,29 @@ pub fn labeledSystem(name: []const u8, comptime F: anytype) System {
 
 pub const func = system;
 
-fn mkFunctionSystemRet(comptime Ret: type, comptime F: anytype) fn (?*anyopaque, *Game) Ret {
+fn mkFunctionSystemRet(comptime Ret: type, comptime F: anytype) fn (?*anyopaque, *Game) anyerror!Ret {
     const info = @typeInfo(@TypeOf(F));
     if (comptime info != .@"fn") {
         @compileError("Expected a function type");
     }
-    if (comptime Ret != info.@"fn".return_type.?) {
-        @compileError("return type of the function and passed type have to match");
+    const FnRet = info.@"fn".return_type.?;
+    const ret_info = @typeInfo(FnRet);
+    comptime {
+        const is_error = ret_info == .error_union;
+        if (is_error) {
+            if (ret_info.error_union.payload != Ret) {
+                @compileError("return of the function (excluding error set) and passed type have to match");
+            }
+        } else {
+            if (Ret != FnRet) {
+                @compileError("return type of the function and passed type have to match " ++ @typeName(FnRet) ++ " and expected " ++ @typeName(Ret));
+            }
+        }
     }
     const params = info.@"fn".params;
 
     return struct {
-        fn call(context: ?*anyopaque, game: *Game) Ret {
+        fn call(context: ?*anyopaque, game: *Game) anyerror!Ret {
             _ = context;
             // Generate compile-time array of query results
             var queries: std.meta.ArgsTuple(@TypeOf(F)) = undefined;
@@ -215,7 +226,7 @@ fn mkFunctionSystemRet(comptime Ret: type, comptime F: anytype) fn (?*anyopaque,
     }.call;
 }
 
-fn mkFnSystem(comptime F: anytype) fn (?*anyopaque, *Game) void {
+fn mkFnSystem(comptime F: anytype) fn (?*anyopaque, *Game) anyerror!void {
     return mkFunctionSystemRet(void, F);
 }
 
@@ -223,10 +234,10 @@ const ConcurrentContext = struct {
     systems: []const System,
     allocator: std.mem.Allocator,
 
-    pub fn run(ptr: ?*anyopaque, game: *Game) void {
+    pub fn run(ptr: ?*anyopaque, game: *Game) anyerror!void {
         const context: *ConcurrentContext = @ptrCast(@alignCast(ptr.?));
         for (context.systems) |sys| {
-            sys.run(game);
+            try sys.run(game);
         }
     }
 

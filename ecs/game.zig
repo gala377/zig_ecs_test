@@ -121,20 +121,20 @@ pub const Game = struct {
     }
 
     pub fn run(self: *Self) !void {
-        self.schedule.runPhase(.setup, self);
+        try self.schedule.runPhase(.setup, self);
 
         while (!self.should_close) {
             // const start = try std.time.Instant.now();
-            self.schedule.runPhase(.update, self);
-            self.schedule.runPhase(.post_update, self);
+            try self.schedule.runPhase(.update, self);
+            try self.schedule.runPhase(.post_update, self);
 
-            self.schedule.runPhase(.pre_render, self);
-            self.schedule.runPhase(.render, self);
-            self.schedule.runPhase(.post_render, self);
+            try self.schedule.runPhase(.pre_render, self);
+            try self.schedule.runPhase(.render, self);
+            try self.schedule.runPhase(.post_render, self);
 
-            self.schedule.runPhase(.tear_down, self);
+            try self.schedule.runPhase(.tear_down, self);
         }
-        self.schedule.runPhase(.close, self);
+        try self.schedule.runPhase(.close, self);
     }
 
     /// TODO: Runtime and core split doesn't make much sense honestly.

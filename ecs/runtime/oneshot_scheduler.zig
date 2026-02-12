@@ -136,24 +136,24 @@ pub fn install(game: *ecs.Game) !void {
     try game.type_registry.registerType(ScheduledSystem);
 }
 
-fn installScheduler(game: *ecs.Game) void {
+fn installScheduler(game: *ecs.Game) !void {
     inline for (@typeInfo(ecs.Schedule.Phase).@"enum".fields) |f| {
-        game.schedule.addScheduleAfter(
+        try game.schedule.addScheduleAfter(
             @enumFromInt(f.value),
             OneShotSchedule{},
             .{},
-        ) catch @panic("oom");
-        game.schedule.addToSchedule(
+        );
+        try game.schedule.addToSchedule(
             @enumFromInt(f.value),
             OneShotSchedule{},
             oneShotRunner(@enumFromInt(f.value)),
-        ) catch @panic("oom");
+        );
     }
 }
 
 fn oneShotRunner(comptime phase: ecs.Schedule.Phase) ecs.System {
     const f = struct {
-        fn run(game: *ecs.Game) void {
+        fn run(game: *ecs.Game) anyerror!void {
             const runner = game.getResource(OneShotScheduler).get();
             const systems = runner.systems.items;
             for (systems, 0..) |*system, index| {
@@ -166,7 +166,7 @@ fn oneShotRunner(comptime phase: ecs.Schedule.Phase) ecs.System {
                     }
                 }
                 system.run = true;
-                system.system.run(game);
+                try system.system.run(game);
                 system.deinit();
                 runner.freelist.put(index, void{}) catch @panic("oom");
             }

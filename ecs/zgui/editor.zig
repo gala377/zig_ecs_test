@@ -12,7 +12,7 @@ pub const EntityDetailsView = struct {
     entity: entity.Id,
 };
 
-pub fn showEntityDetails(game: *Game) void {
+pub fn showEntityDetails(game: *Game) anyerror!void {
     const primitives = game.getResource(PrimiteTypeStorage);
     const commands = game.getResource(ecs.runtime.commands);
     const type_registry = &game.type_registry;
@@ -31,7 +31,7 @@ pub fn showEntityDetails(game: *Game) void {
             const storage = &game.global_entity_storage;
             const archetype_record = storage.entity_map.get(e);
             if (archetype_record) |record| {
-                if (entityDetailsWindow(
+                if (try entityDetailsWindow(
                     e,
                     entity_index,
                     record,
@@ -40,18 +40,16 @@ pub fn showEntityDetails(game: *Game) void {
                     game.allocator,
                     primitives.get(),
                 )) {
-                    remove_views.append(game.allocator, view.*) catch @panic("oom");
+                    try remove_views.append(game.allocator, view.*);
                 }
             } else {
-                if (showEmptyWindow(
+                if (try showEmptyWindow(
                     e,
                     entity_index,
                     "Entity has been deleted",
                     game.allocator,
                 )) {
-                    remove_views.append(game.allocator, view.*) catch {
-                        @panic("oom");
-                    };
+                    try remove_views.append(game.allocator, view.*);
                 }
             }
         } else {
@@ -61,7 +59,7 @@ pub fn showEntityDetails(game: *Game) void {
                     const storage = &s.entity_storage;
                     const archetype_record = storage.entity_map.get(e);
                     if (archetype_record) |record| {
-                        if (entityDetailsWindow(
+                        if (try entityDetailsWindow(
                             e,
                             entity_index,
                             record,
@@ -70,49 +68,43 @@ pub fn showEntityDetails(game: *Game) void {
                             game.allocator,
                             primitives.get(),
                         )) {
-                            remove_views.append(game.allocator, view.*) catch @panic("oom");
+                            try remove_views.append(game.allocator, view.*);
                         }
                     } else {
-                        if (showEmptyWindow(
+                        if (try showEmptyWindow(
                             e,
                             entity_index,
                             "Entity has been deleted",
                             game.allocator,
                         )) {
-                            remove_views.append(game.allocator, view.*) catch {
-                                @panic("oom");
-                            };
+                            try remove_views.append(game.allocator, view.*);
                         }
                     }
                 } else {
-                    if (showEmptyWindow(
+                    if (try showEmptyWindow(
                         e,
                         entity_index,
                         "Active scene is not the same as entities scene",
                         game.allocator,
                     )) {
-                        remove_views.append(game.allocator, view.*) catch {
-                            @panic("oom");
-                        };
+                        try remove_views.append(game.allocator, view.*);
                     }
                 }
             } else {
-                if (showEmptyWindow(
+                if (try showEmptyWindow(
                     e,
                     entity_index,
                     "This is a scene entity but there is no scene active",
                     game.allocator,
                 )) {
-                    remove_views.append(game.allocator, view.*) catch {
-                        @panic("oom");
-                    };
+                    try remove_views.append(game.allocator, view.*);
                 }
             }
         }
         entity_index += 1;
     }
     for (remove_views.items) |id| {
-        commands.get().removeEntity(id) catch @panic("oom");
+        try commands.get().removeEntity(id);
     }
 }
 
@@ -124,15 +116,13 @@ fn entityDetailsWindow(
     storage: *ecs.EntityStorage,
     allocator: std.mem.Allocator,
     primitives: *PrimiteTypeStorage,
-) bool {
-    const title: [:0]const u8 = std.fmt.allocPrintSentinel(
+) !bool {
+    const title: [:0]const u8 = try std.fmt.allocPrintSentinel(
         allocator,
         "Entity {any}::{any}###{any}",
         .{ e.scene_id, e.entity_id, entity_index },
         0,
-    ) catch {
-        @panic("oom");
-    };
+    );
     defer allocator.free(title);
     var show = true;
     if (zgui.begin(title, .{ .popen = &show })) {
@@ -147,7 +137,7 @@ fn entityDetailsWindow(
                     .ptr = component_pointer,
                     .type_id = column.component_id,
                 };
-                printType(reflected, meta, .{
+                try printType(reflected, meta, .{
                     .type_registry = type_registry,
                     .allocator = allocator,
                     .primitives = primitives,
@@ -161,15 +151,18 @@ fn entityDetailsWindow(
     return !show;
 }
 
-fn showEmptyWindow(id: entity.Id, entity_index: usize, msg: []const u8, allocator: std.mem.Allocator) bool {
-    const title: [:0]const u8 = std.fmt.allocPrintSentinel(
+fn showEmptyWindow(
+    id: entity.Id,
+    entity_index: usize,
+    msg: []const u8,
+    allocator: std.mem.Allocator,
+) !bool {
+    const title: [:0]const u8 = try std.fmt.allocPrintSentinel(
         allocator,
         "Entity {any}::{any}###{any}",
         .{ id.scene_id, id.entity_id, entity_index },
         0,
-    ) catch {
-        @panic("oom");
-    };
+    );
     defer allocator.free(title);
     var show_window = true;
     if (zgui.begin(title, .{ .popen = &show_window })) {
@@ -179,13 +172,13 @@ fn showEmptyWindow(id: entity.Id, entity_index: usize, msg: []const u8, allocato
     return !show_window;
 }
 
-pub fn allEntities(game: *Game, commands: ecs.runtime.commands.Commands) void {
+pub fn allEntities(game: *Game, commands: ecs.runtime.commands.Commands) anyerror!void {
     if (zgui.begin("entities", .{})) {
         const type_registry = &game.type_registry;
         const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
         const global_archetypes = game.global_entity_storage.archetypes;
         const primitives = game.getResource(PrimiteTypeStorage);
-        printFromArchetype(
+        try printFromArchetype(
             global_archetypes.items,
             game.allocator,
             type_registry,
@@ -194,7 +187,7 @@ pub fn allEntities(game: *Game, commands: ecs.runtime.commands.Commands) void {
             commands,
             primitives.get(),
         );
-        printFromArchetype(
+        try printFromArchetype(
             scene_archetypes.items,
             game.allocator,
             type_registry,
@@ -207,13 +200,13 @@ pub fn allEntities(game: *Game, commands: ecs.runtime.commands.Commands) void {
     zgui.end();
 }
 
-pub fn allResources(game: *Game, commands: ecs.runtime.commands.Commands) void {
+pub fn allResources(game: *Game, commands: ecs.runtime.commands.Commands) anyerror!void {
     if (zgui.begin("resources", .{})) {
         const type_registry = &game.type_registry;
         const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
         const global_archetypes = game.global_entity_storage.archetypes;
         const primitives = game.getResource(PrimiteTypeStorage);
-        printResourceFromArchetype(
+        try printResourceFromArchetype(
             global_archetypes.items,
             game.allocator,
             type_registry,
@@ -222,7 +215,7 @@ pub fn allResources(game: *Game, commands: ecs.runtime.commands.Commands) void {
             commands,
             primitives.get(),
         );
-        printResourceFromArchetype(
+        try printResourceFromArchetype(
             scene_archetypes.items,
             game.allocator,
             type_registry,
@@ -243,13 +236,13 @@ fn printFromArchetype(
     id: i32,
     commands: ecs.runtime.commands.Commands,
     primitives: *PrimiteTypeStorage,
-) void {
-    const group_label = std.fmt.allocPrintSentinel(
+) anyerror!void {
+    const group_label = try std.fmt.allocPrintSentinel(
         allocator,
         "{s}::{any}",
         .{ label, id },
         0,
-    ) catch @panic("oom");
+    );
     defer allocator.free(group_label);
     if (zgui.treeNode(group_label)) {
         for (archetypes) |*archetype| {
@@ -281,37 +274,37 @@ fn printFromArchetype(
                     column.getAs(entity_index, ecs.core.Name).name
                 else
                     "entity";
-                const entity_label: [:0]const u8 = std.fmt.allocPrintSentinel(
+                const entity_label: [:0]const u8 = try std.fmt.allocPrintSentinel(
                     allocator,
                     "{s} {any}::{any}",
                     .{ entity_name, entity_id.scene_id, entity_id.entity_id },
                     0,
-                ) catch @panic("could not allocate memory");
+                );
                 defer allocator.free(entity_label);
                 if (zgui.smallButton("E")) {
-                    _ = commands.get().addGlobalEntity(.{
+                    _ = try commands.get().addGlobalEntity(.{
                         EntityDetailsView{
                             .entity = entity_id,
                         },
-                    }) catch @panic("oom");
+                    });
                 }
                 zgui.sameLine(.{});
                 if (zgui.smallButton("X")) {
                     std.debug.print("Adding entity to remove {any}\n", .{entity_id});
-                    commands.get().removeEntity(entity_id) catch @panic("oom");
+                    try commands.get().removeEntity(entity_id);
                 }
                 zgui.sameLine(.{});
                 const show_entity = zgui.treeNode(entity_label);
                 if (zgui.beginPopupContextItem()) {
                     if (zgui.menuItem("Details", .{})) {
-                        _ = commands.get().addGlobalEntity(.{
+                        _ = try commands.get().addGlobalEntity(.{
                             EntityDetailsView{
                                 .entity = entity_id,
                             },
-                        }) catch @panic("oom");
+                        });
                     }
                     if (zgui.menuItem("Delete", .{})) {
-                        commands.get().removeEntity(entity_id) catch @panic("oom");
+                        try commands.get().removeEntity(entity_id);
                     }
                     zgui.endPopup();
                 }
@@ -326,7 +319,7 @@ fn printFromArchetype(
                                 .ptr = component_pointer,
                                 .type_id = column.component_id,
                             };
-                            printType(reflected, meta, .{
+                            try printType(reflected, meta, .{
                                 .type_registry = type_registry,
                                 .primitives = primitives,
                                 .allocator = allocator,
@@ -352,13 +345,13 @@ fn printResourceFromArchetype(
     id: i32,
     commands: ecs.runtime.commands.Commands,
     primitives: *PrimiteTypeStorage,
-) void {
-    const group_label = std.fmt.allocPrintSentinel(
+) anyerror!void {
+    const group_label = try std.fmt.allocPrintSentinel(
         allocator,
         "{s}::{any}",
         .{ label, id },
         0,
-    ) catch @panic("oom");
+    );
     defer allocator.free(group_label);
     if (zgui.treeNode(group_label)) {
         for (archetypes) |*archetype| {
@@ -392,24 +385,24 @@ fn printResourceFromArchetype(
                     )))).name
                 else
                     "entity";
-                const entity_label: [:0]const u8 = std.fmt.allocPrintSentinel(
+                const entity_label: [:0]const u8 = try std.fmt.allocPrintSentinel(
                     allocator,
                     "{s} {any}::{any}",
                     .{ entity_name, entity_id.scene_id, entity_id.entity_id },
                     0,
-                ) catch @panic("could not allocate memory");
+                );
                 defer allocator.free(entity_label);
                 const show_entity = zgui.treeNode(entity_label);
                 if (zgui.beginPopupContextItem()) {
                     if (zgui.menuItem("Details", .{})) {
-                        _ = commands.get().addGlobalEntity(.{
+                        _ = try commands.get().addGlobalEntity(.{
                             EntityDetailsView{
                                 .entity = entity_id.*,
                             },
-                        }) catch @panic("oom");
+                        });
                     }
                     if (zgui.menuItem("Delete", .{})) {
-                        commands.get().removeEntity(entity_id.*) catch @panic("oom");
+                        try commands.get().removeEntity(entity_id.*);
                     }
                     zgui.endPopup();
                 }
@@ -429,7 +422,7 @@ fn printResourceFromArchetype(
                                 .allocator = allocator,
                                 .primitives = primitives,
                             };
-                            printType(reflected, meta, context);
+                            try printType(reflected, meta, context);
                         } else {
                             zgui.bulletText("Unknown component", .{});
                         }
@@ -453,13 +446,13 @@ fn printType(
     reflected: ?ecs.type_registry.ReflectedAny,
     metadata: *ecs.type_registry.ReflectionMetaData,
     context: EditorContext,
-) void {
-    const name = context.allocator.dupeZ(
+) anyerror!void {
+    const name = try context.allocator.dupeZ(
         u8,
         metadata.name,
-    ) catch @panic("oom");
+    );
     defer context.allocator.free(name);
-    printTypeWithName(
+    try printTypeWithName(
         name,
         reflected,
         metadata,
@@ -472,17 +465,17 @@ fn printTypeWithName(
     maybe_reflected: ?ecs.type_registry.ReflectedAny,
     metadata: *ecs.type_registry.ReflectionMetaData,
     context: EditorContext,
-) void {
+) anyerror!void {
     if (maybe_reflected) |reflected| {
         if (metadata.kind == .string) {
-            const svalue = metadata.to_string.?(
+            const svalue = try metadata.to_string.?(
                 reflected.ptr,
                 context.allocator,
-            ) catch @panic("oom");
+            );
             defer context.allocator.free(svalue);
             zgui.bulletText("{s} = {s}", .{ name, svalue });
         } else if (metadata.child_type) |child| {
-            printPointer(
+            try printPointer(
                 child,
                 name,
                 reflected,
@@ -490,14 +483,14 @@ fn printTypeWithName(
                 context,
             );
         } else if (metadata.fields.len > 0) {
-            printStruct(
+            try printStruct(
                 name,
                 reflected,
                 metadata,
                 context,
             );
         } else {
-            printValue(
+            try printValue(
                 name,
                 reflected,
                 metadata,
@@ -509,16 +502,16 @@ fn printTypeWithName(
     }
 }
 
-pub fn allSystems(game: *Game) void {
+pub fn allSystems(game: *Game) anyerror!void {
     const schedule: *ecs.Schedule = &game.schedule;
     if (zgui.begin("systems", .{})) {
-        printPhase(.setup, schedule, game.allocator);
-        printPhase(.update, schedule, game.allocator);
-        printPhase(.pre_render, schedule, game.allocator);
-        printPhase(.render, schedule, game.allocator);
-        printPhase(.post_render, schedule, game.allocator);
-        printPhase(.tear_down, schedule, game.allocator);
-        printPhase(.close, schedule, game.allocator);
+        try printPhase(.setup, schedule, game.allocator);
+        try printPhase(.update, schedule, game.allocator);
+        try printPhase(.pre_render, schedule, game.allocator);
+        try printPhase(.render, schedule, game.allocator);
+        try printPhase(.post_render, schedule, game.allocator);
+        try printPhase(.tear_down, schedule, game.allocator);
+        try printPhase(.close, schedule, game.allocator);
     }
     zgui.end();
 }
@@ -528,14 +521,14 @@ fn printValue(
     reflected: ecs.type_registry.ReflectedAny,
     metadata: *ecs.type_registry.ReflectionMetaData,
     context: EditorContext,
-) void {
+) anyerror!void {
     if (metadata.to_string) |to_string| {
         switch (metadata.kind) {
             .@"enum" => {
                 zgui.alignTextToFramePadding();
                 zgui.bulletText("{s} = ", .{name});
                 zgui.sameLine(.{});
-                drawEnumDropdown(metadata, reflected, context.allocator);
+                try drawEnumDropdown(metadata, reflected, context.allocator);
             },
             else => {
                 const maybe_primitive = context.primitives.map.get(reflected.type_id);
@@ -543,39 +536,39 @@ fn printValue(
                     zgui.pushPtrId(reflected.ptr);
                     switch (primitive) {
                         .byte => {
-                            intInput(u8, name, reflected, context.allocator);
+                            try intInput(u8, name, reflected, context.allocator);
                         },
                         .int => {
-                            intInput(isize, name, reflected, context.allocator);
+                            try intInput(isize, name, reflected, context.allocator);
                         },
                         .uint => {
-                            intInput(usize, name, reflected, context.allocator);
+                            try intInput(usize, name, reflected, context.allocator);
                         },
                         .int32 => {
-                            intInput(i32, name, reflected, context.allocator);
+                            try intInput(i32, name, reflected, context.allocator);
                         },
                         .uint32 => {
-                            intInput(u32, name, reflected, context.allocator);
+                            try intInput(u32, name, reflected, context.allocator);
                         },
                         .int64 => {
-                            intInput(i64, name, reflected, context.allocator);
+                            try intInput(i64, name, reflected, context.allocator);
                         },
                         .uint64 => {
-                            intInput(u64, name, reflected, context.allocator);
+                            try intInput(u64, name, reflected, context.allocator);
                         },
                         .bool => {
-                            boolInput(name, reflected, context.allocator);
+                            try boolInput(name, reflected, context.allocator);
                         },
                         .float32 => {
-                            floatInput(f32, name, reflected, context.allocator);
+                            try floatInput(f32, name, reflected, context.allocator);
                         },
                         .float64 => {
-                            floatInput(f64, name, reflected, context.allocator);
+                            try floatInput(f64, name, reflected, context.allocator);
                         },
                     }
                     zgui.popId();
                 } else {
-                    const repr = to_string(reflected.ptr, context.allocator) catch @panic("oom");
+                    const repr = try to_string(reflected.ptr, context.allocator);
                     defer context.allocator.free(repr);
                     zgui.bulletText("{s} = {s}", .{ name, repr });
                 }
@@ -587,36 +580,41 @@ fn printValue(
     }
 }
 
-fn boolInput(name: [:0]const u8, reflected: ecs.type_registry.ReflectedAny, allocator: std.mem.Allocator) void {
+fn boolInput(name: [:0]const u8, reflected: ecs.type_registry.ReflectedAny, allocator: std.mem.Allocator) anyerror!void {
     const boolValue: *bool = @ptrCast(@alignCast(reflected.ptr));
     var returned: bool = boolValue.*;
     zgui.alignTextToFramePadding();
     zgui.bulletText("{s} = ", .{name});
     zgui.sameLine(.{});
-    const label: [:0]const u8 = std.fmt.allocPrintSentinel(
+    const label: [:0]const u8 = try std.fmt.allocPrintSentinel(
         allocator,
         "##{any}",
         .{reflected.ptr},
         0,
-    ) catch @panic("oom");
+    );
     defer allocator.free(label);
     if (zgui.checkbox(label, .{ .v = &returned })) {
         boolValue.* = returned;
     }
 }
 
-fn floatInput(comptime T: type, name: [:0]const u8, reflected: ecs.type_registry.ReflectedAny, allocator: std.mem.Allocator) void {
+fn floatInput(
+    comptime T: type,
+    name: [:0]const u8,
+    reflected: ecs.type_registry.ReflectedAny,
+    allocator: std.mem.Allocator,
+) anyerror!void {
     const intValue: *T = @ptrCast(@alignCast(reflected.ptr));
     zgui.alignTextToFramePadding();
     zgui.bulletText("{s} = ", .{name});
     zgui.sameLine(.{});
     zgui.setNextItemWidth(100.0);
-    const label: [:0]const u8 = std.fmt.allocPrintSentinel(
+    const label: [:0]const u8 = try std.fmt.allocPrintSentinel(
         allocator,
         "##{any}",
         .{reflected.ptr},
         0,
-    ) catch @panic("oom");
+    );
     defer allocator.free(label);
     if (comptime T == f32) {
         var returned: f32 = intValue.*;
@@ -635,19 +633,24 @@ fn floatInput(comptime T: type, name: [:0]const u8, reflected: ecs.type_registry
     }
 }
 
-fn intInput(comptime T: type, name: [:0]const u8, reflected: ecs.type_registry.ReflectedAny, allocator: std.mem.Allocator) void {
+fn intInput(
+    comptime T: type,
+    name: [:0]const u8,
+    reflected: ecs.type_registry.ReflectedAny,
+    allocator: std.mem.Allocator,
+) anyerror!void {
     const intValue: *T = @ptrCast(@alignCast(reflected.ptr));
     var returned: i32 = @intCast(intValue.*);
     zgui.alignTextToFramePadding();
     zgui.bulletText("{s} = ", .{name});
     zgui.sameLine(.{});
     zgui.setNextItemWidth(100.0);
-    const label: [:0]const u8 = std.fmt.allocPrintSentinel(
+    const label: [:0]const u8 = try std.fmt.allocPrintSentinel(
         allocator,
         "##{any}",
         .{reflected.ptr},
         0,
-    ) catch @panic("oom");
+    );
     defer allocator.free(label);
     const changed = zgui.inputInt(label, .{ .v = &returned });
     if (zgui.isItemDeactivatedAfterEdit() or changed) {
@@ -660,26 +663,33 @@ fn printStruct(
     reflected: ecs.type_registry.ReflectedAny,
     metadata: *ecs.type_registry.ReflectionMetaData,
     context: EditorContext,
-) void {
+) anyerror!void {
     const show = zgui.treeNode(name);
     if (show) {
         for (metadata.fields) |field| {
             const field_meta = context.type_registry.metadata.get(field.field_type_id);
             if (field_meta) |meta| {
-                var label: [:0]u8 = context.allocator.allocSentinel(u8, field.name.len + 2 + meta.name.len, 0) catch @panic("oom");
+                var label: [:0]u8 = try context.allocator.allocSentinel(
+                    u8,
+                    field.name.len + 2 + meta.name.len,
+                    0,
+                );
                 defer context.allocator.free(label);
                 @memcpy(label[0..field.name.len], field.name);
                 @memcpy(label[field.name.len .. field.name.len + 2], ": ");
                 @memcpy(label[field.name.len + 2 ..], meta.name);
                 const next_reflected = field.get(reflected.ptr);
-                printTypeWithName(
+                try printTypeWithName(
                     label,
                     next_reflected,
                     meta,
                     context,
                 );
             } else {
-                var label = context.allocator.alloc(u8, field.name.len + 2 + "unknown type".len) catch @panic("oom");
+                var label = try context.allocator.alloc(
+                    u8,
+                    field.name.len + 2 + "unknown type".len,
+                );
                 defer context.allocator.free(label);
                 @memcpy(label[0..field.name.len], field.name);
                 @memcpy(label[field.name.len..], ": unknown type");
@@ -696,7 +706,7 @@ fn printPointer(
     reflected: ecs.type_registry.ReflectedAny,
     metadata: *ecs.type_registry.ReflectionMetaData,
     context: EditorContext,
-) void {
+) anyerror!void {
     const child_metadata = context.type_registry.metadata.get(child);
     if (child_metadata) |meta| {
         var next_reflected: ?ecs.type_registry.ReflectedAny = undefined;
@@ -711,23 +721,23 @@ fn printPointer(
         } else {
             next_reflected = null;
         }
-        printTypeWithName(name, next_reflected, meta, context);
+        try printTypeWithName(name, next_reflected, meta, context);
     } else {
         zgui.bulletText("{s}", .{name});
     }
 }
 
-fn printPhase(phase: ecs.Schedule.Phase, schedule: *ecs.Schedule, allocator: std.mem.Allocator) void {
+fn printPhase(phase: ecs.Schedule.Phase, schedule: *ecs.Schedule, allocator: std.mem.Allocator) anyerror!void {
     const schedules = schedule.getPhase(phase);
     zgui.pushIntId(@intFromEnum(phase));
     if (zgui.treeNode(@tagName(phase))) {
         for (schedules.items, 0..) |schdl, idx| {
             zgui.pushIntId(@intCast(idx + 100));
-            const headerName = allocator.dupeZ(u8, schdl.name) catch @panic("oom");
+            const headerName = try allocator.dupeZ(u8, schdl.name);
             defer allocator.free(headerName);
             if (zgui.treeNode(headerName)) {
                 for (schdl.systems.items) |system| {
-                    printSystem(system, allocator);
+                    try printSystem(system, allocator);
                 }
                 zgui.treePop();
             }
@@ -738,16 +748,16 @@ fn printPhase(phase: ecs.Schedule.Phase, schedule: *ecs.Schedule, allocator: std
     zgui.popId();
 }
 
-fn printSystem(system: ecs.system.System, allocator: std.mem.Allocator) void {
+fn printSystem(system: ecs.system.System, allocator: std.mem.Allocator) anyerror!void {
     const subsystems = system.subsystems();
     if (subsystems.len == 0) {
         zgui.bulletText("{s}", .{system.name});
     } else {
-        const name = allocator.dupeZ(u8, system.name) catch @panic("oom");
+        const name = try allocator.dupeZ(u8, system.name);
         defer allocator.free(name);
         if (zgui.treeNode(name)) {
             for (subsystems) |s| {
-                printSystem(s, allocator);
+                try printSystem(s, allocator);
             }
             zgui.treePop();
         }
@@ -808,7 +818,7 @@ pub fn drawEnumDropdown(
     meta: *ecs.type_registry.ReflectionMetaData,
     value: ecs.type_registry.ReflectedAny,
     allocator: std.mem.Allocator,
-) void {
+) anyerror!void {
     const current_int = meta.tag_to_int.?(value.ptr);
     var preview_name: []const u8 = "Unknown";
     for (meta.tags) |tag| {
@@ -819,7 +829,7 @@ pub fn drawEnumDropdown(
     }
 
     // 3. Render the Dropdown (Combo)
-    const preview = allocator.dupeZ(u8, preview_name) catch @panic("oom");
+    const preview = try allocator.dupeZ(u8, preview_name);
     defer allocator.free(preview);
     zgui.pushPtrId(value.ptr); // Prevent ID collisions if multiple enums are on screen
     if (zgui.beginCombo("##enum_drop", .{
@@ -832,7 +842,7 @@ pub fn drawEnumDropdown(
     })) {
         for (meta.tags) |tag| {
             const is_selected = (tag.tag == current_int);
-            const selectable = allocator.dupeZ(u8, tag.name) catch @panic("oom");
+            const selectable = try allocator.dupeZ(u8, tag.name);
             defer allocator.free(selectable);
             // Render the selectable item
             if (zgui.selectable(selectable, .{ .selected = is_selected })) {

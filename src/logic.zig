@@ -193,7 +193,11 @@ pub fn install(game: *Game) !void {
         \\ end
         \\ return f
     );
-    const script = lua_script.LuaScript.fromLua(game.allocator, game.lua_state, object) catch @panic("could not create object");
+    const script = try lua_script.LuaScript.fromLua(
+        game.allocator,
+        game.lua_state,
+        object,
+    );
     _ = try game.newGlobalEntity(.{
         Name.init("LuaTestScript"),
         script,
@@ -235,13 +239,13 @@ pub fn spawn_on_click(
     commands: Commands,
     buttons: *Query(.{ Button, ButtonSpawn }),
     things: *Query(.{ EntityId, Circle }),
-) void {
+) !void {
     while (buttons.next()) |q1| {
         const b, _ = q1;
         if (b.clicked) {
             while (things.next()) |q| {
                 const e, _ = q;
-                commands.get().removeEntity(e.*) catch @panic("oom");
+                try commands.get().removeEntity(e.*);
             }
         }
     }
@@ -265,14 +269,14 @@ pub fn spawn_circle(
     commands: Commands,
     buttons: *Query(.{ Button, ButtonAddCircle }),
     scheduler: Resource(ecs.runtime.one_shot.OneShotScheduler),
-) void {
+) !void {
     const button, _ = buttons.single();
     const cmd: *ecs.commands = commands.get();
     if (button.clicked) {
-        _ = cmd.addSceneEntity(.{ Circle{ .radius = 50.0 }, Position{ .x = 1080.0 / 2, .y = 720.0 / 2 }, Style{
+        _ = try cmd.addSceneEntity(.{ Circle{ .radius = 50.0 }, Position{ .x = 1080.0 / 2, .y = 720.0 / 2 }, Style{
             .background_color = Color.white,
-        }, NewCircle{} }) catch @panic("could not spawn circle");
-        scheduler.inner.runByName(.update, "logic.log") catch @panic("oom");
+        }, NewCircle{} });
+        try scheduler.inner.runByName(.update, "logic.log");
     }
 }
 
@@ -280,13 +284,13 @@ pub fn add_player(
     commands: Commands,
     buttons: *Query(.{ Button, ButtonAddPlayer }),
     circles: *Query(.{ EntityId, Circle, Without(.{PlayerMarker}) }),
-) void {
+) !void {
     const button, _ = buttons.single();
     const cmd: *ecs.commands = commands.get();
     if (button.clicked) {
         if (circles.next()) |c| {
             const id: EntityId = c[0].*;
-            cmd.addComponents(id, .{PlayerMarker{}}) catch @panic("could not add component to entity");
+            try cmd.addComponents(id, .{PlayerMarker{}});
         }
     }
 }
@@ -307,7 +311,7 @@ pub fn remove_last_entity(
     buttons: *Query(.{ Button, ButtonRemoveLast }),
     entities: *Query(.{ EntityId, TestItem }),
     event: EventWriter(MyEvent),
-) void {
+) !void {
     const button: *Button, _ = buttons.single();
     if (button.clicked) {
         var last: ?EntityId = null;
@@ -321,7 +325,7 @@ pub fn remove_last_entity(
         }
         if (last) |id| {
             event.add(id.entity_id);
-            commands.get().removeEntity(id) catch @panic("oom");
+            try commands.get().removeEntity(id);
         }
     }
 }
@@ -472,8 +476,8 @@ fn never_run(cond: Resource(RunOnce)) bool {
     return !cond.get().already_run;
 }
 
-fn setup_circle(commands: Commands) void {
-    _ = commands.get().addSceneEntity(.{
+fn setup_circle(commands: Commands) !void {
+    _ = try commands.get().addSceneEntity(.{
         Circle{ .radius = 50.0 },
         Position{ .x = 1080.0 / 2, .y = 720.0 / 2 },
         Style{
@@ -485,7 +489,7 @@ fn setup_circle(commands: Commands) void {
             },
         },
         PlayerMarker{},
-    }) catch @panic("failed to spawn entity");
+    });
 }
 
 fn move_player_marker(player: *Query(.{ PlayerMarker, Position })) void {

@@ -110,7 +110,7 @@ fn ignore(context: ?*anyopaque) void {
 
 pub fn eventSystem(comptime T: type) System {
     const run = struct {
-        fn call(context: ?*anyopaque, game: *Game) void {
+        fn call(context: ?*anyopaque, game: *Game) anyerror!void {
             _ = context;
             const event_buffer = game.getResource(EventBuffer(T));
             const event_writer = game.getResource(EventWriterBuffer(T));

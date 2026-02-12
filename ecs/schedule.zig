@@ -28,9 +28,9 @@ pub const Schedule = struct {
     name: []const u8,
     systems: std.ArrayList(System),
 
-    pub fn run(self: *const @This(), game: *Game) void {
+    pub fn run(self: *const @This(), game: *Game) anyerror!void {
         for (self.systems.items) |s| {
-            s.run(game);
+            try s.run(game);
         }
     }
 
@@ -170,10 +170,10 @@ pub fn add(self: *Self, phase: Phase, sys: System) !void {
     try self.addToSchedule(phase, DefaultSchedule{}, sys);
 }
 
-pub fn runPhase(self: *Self, phase: Phase, game: *Game) void {
+pub fn runPhase(self: *Self, phase: Phase, game: *Game) anyerror!void {
     const schedule = self.getPhase(phase);
     for (schedule.items) |s| {
-        s.run(game);
+        try s.run(game);
     }
 }
 pub fn deinitPhase(self: *Self, phase: Phase) void {
