@@ -9,49 +9,23 @@ const Game = ecs.game.Game;
 
 pub const EntityDetailsView = struct {
     pub const component_info = ecs.Component(EntityDetailsView);
-    allocator: std.mem.Allocator,
-    entities: std.ArrayList(entity.Id),
-
-    pub fn init(allocator: std.mem.Allocator) EntityDetailsView {
-        return .{
-            .allocator = allocator,
-            .entities = .empty,
-        };
-    }
-
-    pub fn add(self: *EntityDetailsView, id: entity.Id) !void {
-        return self.entities.append(self.allocator, id);
-    }
-
-    pub fn remove(self: *EntityDetailsView, id: entity.Id) void {
-        var index: ?usize = null;
-        for (self.entities.items, 0..) |e, idx| {
-            if (e.scene_id == id.scene_id and e.entity_id == id.entity_id) {
-                index = idx;
-                break;
-            }
-        }
-        if (index) |idx| {
-            _ = self.entities.orderedRemove(idx);
-        }
-    }
-
-    pub fn deinit(self: *EntityDetailsView, allocator: std.mem.Allocator) void {
-        _ = allocator;
-        self.entities.deinit(self.allocator);
-    }
+    entity: entity.Id,
 };
 
 pub fn showEntityDetails(game: *Game) void {
-    const view = game.getResource(EntityDetailsView);
     const primitives = game.getResource(PrimiteTypeStorage);
+    const commands = game.getResource(ecs.runtime.commands);
     const type_registry = &game.type_registry;
-    const entity_view = view.get();
-    const entities: []const entity.Id = entity_view.entities.items;
     var remove_views: std.ArrayList(entity.Id) = .empty;
     defer remove_views.deinit(game.allocator);
-    for (entities, 0..) |e, entity_index| {
-        const scene = if (game.current_scene) |*s| s else null;
+    const scene = if (game.current_scene) |*s| s else null;
+    var views = game.query(.{ ecs.entity.Id, EntityDetailsView }, .{});
+    var entity_index: usize = 0;
+    while (views.next()) |view_data| {
+        var view: *entity.Id = undefined;
+        var details: *EntityDetailsView = undefined;
+        view, details = view_data;
+        const e = details.entity;
         if (e.scene_id == 0) {
             // global entity
             const storage = &game.global_entity_storage;
@@ -66,7 +40,7 @@ pub fn showEntityDetails(game: *Game) void {
                     game.allocator,
                     primitives.get(),
                 )) {
-                    remove_views.append(game.allocator, e) catch @panic("oom");
+                    remove_views.append(game.allocator, view.*) catch @panic("oom");
                 }
             } else {
                 if (showEmptyWindow(
@@ -75,7 +49,7 @@ pub fn showEntityDetails(game: *Game) void {
                     "Entity has been deleted",
                     game.allocator,
                 )) {
-                    remove_views.append(game.allocator, e) catch {
+                    remove_views.append(game.allocator, view.*) catch {
                         @panic("oom");
                     };
                 }
@@ -96,7 +70,7 @@ pub fn showEntityDetails(game: *Game) void {
                             game.allocator,
                             primitives.get(),
                         )) {
-                            remove_views.append(game.allocator, e) catch @panic("oom");
+                            remove_views.append(game.allocator, view.*) catch @panic("oom");
                         }
                     } else {
                         if (showEmptyWindow(
@@ -105,7 +79,7 @@ pub fn showEntityDetails(game: *Game) void {
                             "Entity has been deleted",
                             game.allocator,
                         )) {
-                            remove_views.append(game.allocator, e) catch {
+                            remove_views.append(game.allocator, view.*) catch {
                                 @panic("oom");
                             };
                         }
@@ -117,7 +91,7 @@ pub fn showEntityDetails(game: *Game) void {
                         "Active scene is not the same as entities scene",
                         game.allocator,
                     )) {
-                        remove_views.append(game.allocator, e) catch {
+                        remove_views.append(game.allocator, view.*) catch {
                             @panic("oom");
                         };
                     }
@@ -129,17 +103,152 @@ pub fn showEntityDetails(game: *Game) void {
                     "This is a scene entity but there is no scene active",
                     game.allocator,
                 )) {
-                    remove_views.append(game.allocator, e) catch {
+                    remove_views.append(game.allocator, view.*) catch {
                         @panic("oom");
                     };
                 }
             }
         }
+        entity_index += 1;
     }
     for (remove_views.items) |id| {
-        entity_view.remove(id);
+        commands.get().removeEntity(id) catch @panic("oom");
     }
 }
+
+// pub const EntityDetailsView = struct {
+//     pub const component_info = ecs.Component(EntityDetailsView);
+//     allocator: std.mem.Allocator,
+//     entities: std.ArrayList(entity.Id),
+//
+//     pub fn init(allocator: std.mem.Allocator) EntityDetailsView {
+//         return .{
+//             .allocator = allocator,
+//             .entities = .empty,
+//         };
+//     }
+//
+//     pub fn add(self: *EntityDetailsView, id: entity.Id) !void {
+//         return self.entities.append(self.allocator, id);
+//     }
+//
+//     pub fn remove(self: *EntityDetailsView, id: entity.Id) void {
+//         var index: ?usize = null;
+//         for (self.entities.items, 0..) |e, idx| {
+//             if (e.scene_id == id.scene_id and e.entity_id == id.entity_id) {
+//                 index = idx;
+//                 break;
+//             }
+//         }
+//         if (index) |idx| {
+//             _ = self.entities.orderedRemove(idx);
+//         }
+//     }
+//
+//     pub fn deinit(self: *EntityDetailsView, allocator: std.mem.Allocator) void {
+//         _ = allocator;
+//         self.entities.deinit(self.allocator);
+//     }
+// };
+
+// pub fn showEntityDetails(game: *Game) void {
+//     const view = game.getResource(EntityDetailsView);
+//     const primitives = game.getResource(PrimiteTypeStorage);
+//     const type_registry = &game.type_registry;
+//     const entity_view = view.get();
+//     const entities: []const entity.Id = entity_view.entities.items;
+//     var remove_views: std.ArrayList(entity.Id) = .empty;
+//     defer remove_views.deinit(game.allocator);
+//     for (entities, 0..) |e, entity_index| {
+//         const scene = if (game.current_scene) |*s| s else null;
+//         if (e.scene_id == 0) {
+//             // global entity
+//             const storage = &game.global_entity_storage;
+//             const archetype_record = storage.entity_map.get(e);
+//             if (archetype_record) |record| {
+//                 if (entityDetailsWindow(
+//                     e,
+//                     entity_index,
+//                     record,
+//                     type_registry,
+//                     storage,
+//                     game.allocator,
+//                     primitives.get(),
+//                 )) {
+//                     remove_views.append(game.allocator, e) catch @panic("oom");
+//                 }
+//             } else {
+//                 if (showEmptyWindow(
+//                     e,
+//                     entity_index,
+//                     "Entity has been deleted",
+//                     game.allocator,
+//                 )) {
+//                     remove_views.append(game.allocator, e) catch {
+//                         @panic("oom");
+//                     };
+//                 }
+//             }
+//         } else {
+//             // scene entity
+//             if (scene) |s| {
+//                 if (s.id == e.scene_id) {
+//                     const storage = &s.entity_storage;
+//                     const archetype_record = storage.entity_map.get(e);
+//                     if (archetype_record) |record| {
+//                         if (entityDetailsWindow(
+//                             e,
+//                             entity_index,
+//                             record,
+//                             type_registry,
+//                             storage,
+//                             game.allocator,
+//                             primitives.get(),
+//                         )) {
+//                             remove_views.append(game.allocator, e) catch @panic("oom");
+//                         }
+//                     } else {
+//                         if (showEmptyWindow(
+//                             e,
+//                             entity_index,
+//                             "Entity has been deleted",
+//                             game.allocator,
+//                         )) {
+//                             remove_views.append(game.allocator, e) catch {
+//                                 @panic("oom");
+//                             };
+//                         }
+//                     }
+//                 } else {
+//                     if (showEmptyWindow(
+//                         e,
+//                         entity_index,
+//                         "Active scene is not the same as entities scene",
+//                         game.allocator,
+//                     )) {
+//                         remove_views.append(game.allocator, e) catch {
+//                             @panic("oom");
+//                         };
+//                     }
+//                 }
+//             } else {
+//                 if (showEmptyWindow(
+//                     e,
+//                     entity_index,
+//                     "This is a scene entity but there is no scene active",
+//                     game.allocator,
+//                 )) {
+//                     remove_views.append(game.allocator, e) catch {
+//                         @panic("oom");
+//                     };
+//                 }
+//             }
+//         }
+//     }
+//     for (remove_views.items) |id| {
+//         entity_view.remove(id);
+//     }
+// }
 
 fn entityDetailsWindow(
     e: entity.Id,
@@ -211,16 +320,13 @@ pub fn allEntities(game: *Game, commands: ecs.runtime.commands.Commands) void {
         const type_registry = &game.type_registry;
         const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
         const global_archetypes = game.global_entity_storage.archetypes;
-        const view = game.getResource(EntityDetailsView);
         const primitives = game.getResource(PrimiteTypeStorage);
-        const entity_view = view.get();
         printFromArchetype(
             global_archetypes.items,
             game.allocator,
             type_registry,
             "global",
             0,
-            entity_view,
             commands,
             primitives.get(),
         );
@@ -230,7 +336,6 @@ pub fn allEntities(game: *Game, commands: ecs.runtime.commands.Commands) void {
             type_registry,
             "scene",
             @intCast(game.current_scene.?.id),
-            entity_view,
             commands,
             primitives.get(),
         );
@@ -243,16 +348,13 @@ pub fn allResources(game: *Game, commands: ecs.runtime.commands.Commands) void {
         const type_registry = &game.type_registry;
         const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
         const global_archetypes = game.global_entity_storage.archetypes;
-        const view = game.getResource(EntityDetailsView);
         const primitives = game.getResource(PrimiteTypeStorage);
-        const entity_view = view.get();
         printResourceFromArchetype(
             global_archetypes.items,
             game.allocator,
             type_registry,
             "global",
             0,
-            entity_view,
             commands,
             primitives.get(),
         );
@@ -262,7 +364,6 @@ pub fn allResources(game: *Game, commands: ecs.runtime.commands.Commands) void {
             type_registry,
             "scene",
             @intCast(game.current_scene.?.id),
-            entity_view,
             commands,
             primitives.get(),
         );
@@ -276,7 +377,6 @@ fn printFromArchetype(
     type_registry: *ecs.TypeRegistry,
     label: []const u8,
     id: i32,
-    entity_view: *EntityDetailsView,
     commands: ecs.runtime.commands.Commands,
     primitives: *PrimiteTypeStorage,
 ) void {
@@ -325,7 +425,11 @@ fn printFromArchetype(
                 ) catch @panic("could not allocate memory");
                 defer allocator.free(entity_label);
                 if (zgui.smallButton("E")) {
-                    entity_view.add(entity_id) catch @panic("oom");
+                    _ = commands.get().addGlobalEntity(.{
+                        EntityDetailsView{
+                            .entity = entity_id,
+                        },
+                    }) catch @panic("oom");
                 }
                 zgui.sameLine(.{});
                 if (zgui.smallButton("X")) {
@@ -336,7 +440,11 @@ fn printFromArchetype(
                 const show_entity = zgui.treeNode(entity_label);
                 if (zgui.beginPopupContextItem()) {
                     if (zgui.menuItem("Details", .{})) {
-                        entity_view.add(entity_id) catch @panic("oom");
+                        _ = commands.get().addGlobalEntity(.{
+                            EntityDetailsView{
+                                .entity = entity_id,
+                            },
+                        }) catch @panic("oom");
                     }
                     if (zgui.menuItem("Delete", .{})) {
                         commands.get().removeEntity(entity_id) catch @panic("oom");
@@ -380,7 +488,6 @@ fn printResourceFromArchetype(
     type_registry: *ecs.TypeRegistry,
     label: []const u8,
     id: i32,
-    entity_view: *EntityDetailsView,
     commands: ecs.runtime.commands.Commands,
     primitives: *PrimiteTypeStorage,
 ) void {
@@ -433,7 +540,11 @@ fn printResourceFromArchetype(
                 const show_entity = zgui.treeNode(entity_label);
                 if (zgui.beginPopupContextItem()) {
                     if (zgui.menuItem("Details", .{})) {
-                        entity_view.add(entity_id.*) catch @panic("oom");
+                        _ = commands.get().addGlobalEntity(.{
+                            EntityDetailsView{
+                                .entity = entity_id.*,
+                            },
+                        }) catch @panic("oom");
                     }
                     if (zgui.menuItem("Delete", .{})) {
                         commands.get().removeEntity(entity_id.*) catch @panic("oom");
