@@ -84,6 +84,7 @@ pub const Game = struct {
     global_entity_storage: EntityStorage,
     vtable_storage: VTableStorage,
     type_registry: TypeRegistry,
+    systems_registry: ecs.SystemsRegistry,
 
     pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
         return .{
@@ -102,6 +103,7 @@ pub const Game = struct {
             .frame_allocator = .init(std.heap.c_allocator),
             .schedule = Schedule.init(allocator),
             .type_registry = .init(allocator),
+            .systems_registry = .init(allocator),
         };
     }
 
@@ -166,6 +168,7 @@ pub const Game = struct {
             ecs.system.labeledSystem("runtime.allocators.freeFrameAllocator", runtime.allocators.freeFrameAllocator),
         });
         try core.install(self);
+        try runtime.one_shot.install(self);
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
@@ -523,6 +526,7 @@ pub const Game = struct {
         self.vtable_storage.deinit();
         self.frame_allocator.deinit();
         self.type_registry.deinit();
+        self.systems_registry.deinit();
     }
 
     pub fn newId(self: *Self) usize {

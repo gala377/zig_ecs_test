@@ -21,11 +21,13 @@ pub const Schedule = @import("schedule.zig");
 pub const EntityStorage = @import("entity_storage.zig");
 pub const Marker = @import("marker.zig");
 pub const VTableStorage = @import("comp_vtable_storage.zig");
+pub const SystemsRegistry = @import("systems_registry.zig");
 pub const Game = game.Game;
 pub const Query = game.Query;
 pub const Resource = resource.Resource;
 pub const Scene = scene.Scene;
 pub const TypeRegistry = type_registry.TypeRegistry;
+pub const System = system.System;
 
 pub fn Component(comptime T: type) component.MetaData(
     T,

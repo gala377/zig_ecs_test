@@ -215,6 +215,11 @@ pub fn install(game: *Game) !void {
             test_item_exists,
         ),
     });
+    _ = try game.systems_registry.register(system("logic.log", log));
+}
+
+pub fn log() void {
+    std.debug.print("Run successfully\n", .{});
 }
 
 pub const MyEvent = usize;
@@ -256,13 +261,18 @@ const NewCircle = struct {
     marker: Marker = .empty,
 };
 
-pub fn spawn_circle(commands: Commands, buttons: *Query(.{ Button, ButtonAddCircle })) void {
+pub fn spawn_circle(
+    commands: Commands,
+    buttons: *Query(.{ Button, ButtonAddCircle }),
+    scheduler: Resource(ecs.runtime.one_shot.OneShotScheduler),
+) void {
     const button, _ = buttons.single();
     const cmd: *ecs.commands = commands.get();
     if (button.clicked) {
         _ = cmd.addSceneEntity(.{ Circle{ .radius = 50.0 }, Position{ .x = 1080.0 / 2, .y = 720.0 / 2 }, Style{
             .background_color = Color.white,
         }, NewCircle{} }) catch @panic("could not spawn circle");
+        scheduler.inner.runByName(.update, "logic.log") catch @panic("oom");
     }
 }
 
