@@ -115,7 +115,9 @@ pub fn eventSystem(comptime T: type) System {
             const event_buffer = game.getResource(EventBuffer(T));
             const event_writer = game.getResource(EventWriterBuffer(T));
             if (event_writer.inner.events.items.len > 0) {
-                const new_buffer = event_writer.inner.events.toOwnedSlice(event_writer.inner.allocator) catch @panic("could not own the slice");
+                const new_buffer = try event_writer.inner.events.toOwnedSlice(
+                    event_writer.inner.allocator,
+                );
                 if (event_buffer.inner.events.len > 0) {
                     event_buffer.inner.deinit();
                 }
