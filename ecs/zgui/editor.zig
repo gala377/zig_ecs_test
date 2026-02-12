@@ -147,13 +147,11 @@ fn entityDetailsWindow(
                     .ptr = component_pointer,
                     .type_id = column.component_id,
                 };
-                printType(
-                    type_registry,
-                    meta,
-                    allocator,
-                    reflected,
-                    primitives,
-                );
+                printType(reflected, meta, .{
+                    .type_registry = type_registry,
+                    .allocator = allocator,
+                    .primitives = primitives,
+                });
             } else {
                 zgui.bulletText("Unknown component", .{});
             }
@@ -328,13 +326,11 @@ fn printFromArchetype(
                                 .ptr = component_pointer,
                                 .type_id = column.component_id,
                             };
-                            printType(
-                                type_registry,
-                                meta,
-                                allocator,
-                                reflected,
-                                primitives,
-                            );
+                            printType(reflected, meta, .{
+                                .type_registry = type_registry,
+                                .primitives = primitives,
+                                .allocator = allocator,
+                            });
                         } else {
                             zgui.bulletText("Unknown component", .{});
                         }
@@ -428,13 +424,12 @@ fn printResourceFromArchetype(
                                 .ptr = component_pointer,
                                 .type_id = column.component_id,
                             };
-                            printType(
-                                type_registry,
-                                meta,
-                                allocator,
-                                reflected,
-                                primitives,
-                            );
+                            const context = EditorContext{
+                                .type_registry = type_registry,
+                                .allocator = allocator,
+                                .primitives = primitives,
+                            };
+                            printType(reflected, meta, context);
                         } else {
                             zgui.bulletText("Unknown component", .{});
                         }
@@ -448,65 +443,65 @@ fn printResourceFromArchetype(
     }
 }
 
-fn printType(
+const EditorContext = struct {
     type_registry: *ecs.TypeRegistry,
-    metadata: *ecs.type_registry.ReflectionMetaData,
     allocator: std.mem.Allocator,
-    reflected: ?ecs.type_registry.ReflectedAny,
     primitives: *PrimiteTypeStorage,
+};
+
+fn printType(
+    reflected: ?ecs.type_registry.ReflectedAny,
+    metadata: *ecs.type_registry.ReflectionMetaData,
+    context: EditorContext,
 ) void {
-    const name = allocator.dupeZ(u8, metadata.name) catch @panic("oom");
-    defer allocator.free(name);
+    const name = context.allocator.dupeZ(
+        u8,
+        metadata.name,
+    ) catch @panic("oom");
+    defer context.allocator.free(name);
     printTypeWithName(
-        type_registry,
-        metadata,
-        allocator,
         name,
         reflected,
-        primitives,
+        metadata,
+        context,
     );
 }
 
 fn printTypeWithName(
-    type_registry: *ecs.TypeRegistry,
-    metadata: *ecs.type_registry.ReflectionMetaData,
-    allocator: std.mem.Allocator,
     name: [:0]const u8,
     maybe_reflected: ?ecs.type_registry.ReflectedAny,
-    primitive_type_storage: *PrimiteTypeStorage,
+    metadata: *ecs.type_registry.ReflectionMetaData,
+    context: EditorContext,
 ) void {
     if (maybe_reflected) |reflected| {
         if (metadata.kind == .string) {
-            const svalue = metadata.to_string.?(reflected.ptr, allocator) catch @panic("oom");
-            defer allocator.free(svalue);
+            const svalue = metadata.to_string.?(
+                reflected.ptr,
+                context.allocator,
+            ) catch @panic("oom");
+            defer context.allocator.free(svalue);
             zgui.bulletText("{s} = {s}", .{ name, svalue });
         } else if (metadata.child_type) |child| {
             printPointer(
-                type_registry,
                 child,
-                metadata,
-                reflected,
-                allocator,
                 name,
-                primitive_type_storage,
+                reflected,
+                metadata,
+                context,
             );
         } else if (metadata.fields.len > 0) {
             printStruct(
                 name,
-                type_registry,
-                metadata,
                 reflected,
-                allocator,
-                primitive_type_storage,
+                metadata,
+                context,
             );
         } else {
             printValue(
                 name,
-                metadata,
                 reflected,
-                allocator,
-                primitive_type_storage,
-                type_registry,
+                metadata,
+                context,
             );
         }
     } else {
@@ -530,61 +525,58 @@ pub fn allSystems(game: *Game) void {
 
 fn printValue(
     name: [:0]const u8,
-    metadata: *ecs.type_registry.ReflectionMetaData,
     reflected: ecs.type_registry.ReflectedAny,
-    allocator: std.mem.Allocator,
-    primitive_type_storage: *PrimiteTypeStorage,
-    type_registry: *ecs.TypeRegistry,
+    metadata: *ecs.type_registry.ReflectionMetaData,
+    context: EditorContext,
 ) void {
-    _ = type_registry;
     if (metadata.to_string) |to_string| {
         switch (metadata.kind) {
             .@"enum" => {
                 zgui.alignTextToFramePadding();
                 zgui.bulletText("{s} = ", .{name});
                 zgui.sameLine(.{});
-                drawEnumDropdown(metadata, reflected, allocator);
+                drawEnumDropdown(metadata, reflected, context.allocator);
             },
             else => {
-                const maybe_primitive = primitive_type_storage.map.get(reflected.type_id);
+                const maybe_primitive = context.primitives.map.get(reflected.type_id);
                 if (maybe_primitive) |primitive| {
                     zgui.pushPtrId(reflected.ptr);
                     switch (primitive) {
                         .byte => {
-                            intInput(u8, name, reflected, allocator);
+                            intInput(u8, name, reflected, context.allocator);
                         },
                         .int => {
-                            intInput(isize, name, reflected, allocator);
+                            intInput(isize, name, reflected, context.allocator);
                         },
                         .uint => {
-                            intInput(usize, name, reflected, allocator);
+                            intInput(usize, name, reflected, context.allocator);
                         },
                         .int32 => {
-                            intInput(i32, name, reflected, allocator);
+                            intInput(i32, name, reflected, context.allocator);
                         },
                         .uint32 => {
-                            intInput(u32, name, reflected, allocator);
+                            intInput(u32, name, reflected, context.allocator);
                         },
                         .int64 => {
-                            intInput(i64, name, reflected, allocator);
+                            intInput(i64, name, reflected, context.allocator);
                         },
                         .uint64 => {
-                            intInput(u64, name, reflected, allocator);
+                            intInput(u64, name, reflected, context.allocator);
                         },
                         .bool => {
-                            boolInput(name, reflected, allocator);
+                            boolInput(name, reflected, context.allocator);
                         },
                         .float32 => {
-                            floatInput(f32, name, reflected, allocator);
+                            floatInput(f32, name, reflected, context.allocator);
                         },
                         .float64 => {
-                            floatInput(f64, name, reflected, allocator);
+                            floatInput(f64, name, reflected, context.allocator);
                         },
                     }
                     zgui.popId();
                 } else {
-                    const repr = to_string(reflected.ptr, allocator) catch @panic("oom");
-                    defer allocator.free(repr);
+                    const repr = to_string(reflected.ptr, context.allocator) catch @panic("oom");
+                    defer context.allocator.free(repr);
                     zgui.bulletText("{s} = {s}", .{ name, repr });
                 }
             },
@@ -665,34 +657,30 @@ fn intInput(comptime T: type, name: [:0]const u8, reflected: ecs.type_registry.R
 
 fn printStruct(
     name: [:0]const u8,
-    type_registry: *ecs.TypeRegistry,
-    metadata: *ecs.type_registry.ReflectionMetaData,
     reflected: ecs.type_registry.ReflectedAny,
-    allocator: std.mem.Allocator,
-    primitives: *PrimiteTypeStorage,
+    metadata: *ecs.type_registry.ReflectionMetaData,
+    context: EditorContext,
 ) void {
     const show = zgui.treeNode(name);
     if (show) {
         for (metadata.fields) |field| {
-            const field_meta = type_registry.metadata.get(field.field_type_id);
+            const field_meta = context.type_registry.metadata.get(field.field_type_id);
             if (field_meta) |meta| {
-                var label: [:0]u8 = allocator.allocSentinel(u8, field.name.len + 2 + meta.name.len, 0) catch @panic("oom");
-                defer allocator.free(label);
+                var label: [:0]u8 = context.allocator.allocSentinel(u8, field.name.len + 2 + meta.name.len, 0) catch @panic("oom");
+                defer context.allocator.free(label);
                 @memcpy(label[0..field.name.len], field.name);
                 @memcpy(label[field.name.len .. field.name.len + 2], ": ");
                 @memcpy(label[field.name.len + 2 ..], meta.name);
                 const next_reflected = field.get(reflected.ptr);
                 printTypeWithName(
-                    type_registry,
-                    meta,
-                    allocator,
                     label,
                     next_reflected,
-                    primitives,
+                    meta,
+                    context,
                 );
             } else {
-                var label = allocator.alloc(u8, field.name.len + 2 + "unknown type".len) catch @panic("oom");
-                defer allocator.free(label);
+                var label = context.allocator.alloc(u8, field.name.len + 2 + "unknown type".len) catch @panic("oom");
+                defer context.allocator.free(label);
                 @memcpy(label[0..field.name.len], field.name);
                 @memcpy(label[field.name.len..], ": unknown type");
                 zgui.bulletText("{s}", .{label});
@@ -703,15 +691,13 @@ fn printStruct(
 }
 
 fn printPointer(
-    type_registry: *ecs.TypeRegistry,
     child: usize,
-    metadata: *ecs.type_registry.ReflectionMetaData,
-    reflected: ecs.type_registry.ReflectedAny,
-    allocator: std.mem.Allocator,
     name: [:0]const u8,
-    primitives: *PrimiteTypeStorage,
+    reflected: ecs.type_registry.ReflectedAny,
+    metadata: *ecs.type_registry.ReflectionMetaData,
+    context: EditorContext,
 ) void {
-    const child_metadata = type_registry.metadata.get(child);
+    const child_metadata = context.type_registry.metadata.get(child);
     if (child_metadata) |meta| {
         var next_reflected: ?ecs.type_registry.ReflectedAny = undefined;
         if (metadata.kind == .pointer) {
@@ -725,14 +711,7 @@ fn printPointer(
         } else {
             next_reflected = null;
         }
-        printTypeWithName(
-            type_registry,
-            meta,
-            allocator,
-            name,
-            next_reflected,
-            primitives,
-        );
+        printTypeWithName(name, next_reflected, meta, context);
     } else {
         zgui.bulletText("{s}", .{name});
     }
