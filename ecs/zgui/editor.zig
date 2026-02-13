@@ -502,11 +502,69 @@ fn printTypeWithName(
     }
 }
 
+pub fn printPhaseTimes(execution_times: ecs.Resource(ecs.runtime.PhaseExecutionTimer)) !void {
+    if (zgui.begin("phase executions", .{})) {
+        const reading = &execution_times.inner.readings;
+        try printReding(
+            reading,
+            .setup,
+        );
+        try printReding(
+            reading,
+            .pre_update,
+        );
+        try printReding(
+            reading,
+            .update,
+        );
+        try printReding(
+            reading,
+            .post_update,
+        );
+        try printReding(
+            reading,
+            .pre_render,
+        );
+        try printReding(
+            reading,
+            .render,
+        );
+        try printReding(
+            reading,
+            .post_render,
+        );
+        try printReding(
+            reading,
+            .tear_down,
+        );
+        try printReding(
+            reading,
+            .close,
+        );
+    }
+    zgui.end();
+}
+
+fn printReding(
+    readings: *std.EnumArray(ecs.Schedule.Phase, ecs.runtime.PhaseExecutionTimer.Reading),
+    phase: ecs.Schedule.Phase,
+) !void {
+    const read = readings.getPtr(phase);
+    const name = @tagName(phase);
+    if (read.read_once) {
+        zgui.text("{s} = {any}", .{ name, read.average().toSeconds() });
+    } else {
+        zgui.text("{s} = ...", .{name});
+    }
+}
+
 pub fn allSystems(game: *Game) anyerror!void {
     const schedule: *ecs.Schedule = &game.schedule;
     if (zgui.begin("systems", .{})) {
         try printPhase(.setup, schedule, game.allocator);
+        try printPhase(.pre_update, schedule, game.allocator);
         try printPhase(.update, schedule, game.allocator);
+        try printPhase(.post_update, schedule, game.allocator);
         try printPhase(.pre_render, schedule, game.allocator);
         try printPhase(.render, schedule, game.allocator);
         try printPhase(.post_render, schedule, game.allocator);
@@ -539,10 +597,10 @@ fn printValue(
                             try intInput(u8, name, reflected, context.allocator);
                         },
                         .int => {
-                            try intInput(isize, name, reflected, context.allocator);
+                            try intInput(i64, name, reflected, context.allocator);
                         },
                         .uint => {
-                            try intInput(usize, name, reflected, context.allocator);
+                            try intInput(u64, name, reflected, context.allocator);
                         },
                         .int32 => {
                             try intInput(i32, name, reflected, context.allocator);
@@ -640,7 +698,7 @@ fn intInput(
     allocator: std.mem.Allocator,
 ) anyerror!void {
     const intValue: *T = @ptrCast(@alignCast(reflected.ptr));
-    var returned: i32 = @intCast(intValue.*);
+    var returned: T = intValue.*;
     zgui.alignTextToFramePadding();
     zgui.bulletText("{s} = ", .{name});
     zgui.sameLine(.{});
@@ -652,9 +710,11 @@ fn intInput(
         0,
     );
     defer allocator.free(label);
-    const changed = zgui.inputInt(label, .{ .v = &returned });
+    const changed = zgui.inputScalar(label, T, .{
+        .v = &returned,
+    });
     if (zgui.isItemDeactivatedAfterEdit() or changed) {
-        intValue.* = @intCast(returned);
+        intValue.* = returned;
     }
 }
 

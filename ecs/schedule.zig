@@ -10,6 +10,7 @@ const Self = @This();
 
 pub const Phase = enum {
     setup,
+    pre_update,
     update,
     post_update,
     pre_render,
@@ -44,6 +45,7 @@ pub const Schedule = struct {
 
 setup_systems: std.ArrayList(Schedule),
 
+pre_update_systems: std.ArrayList(Schedule),
 update_systems: std.ArrayList(Schedule),
 post_update_systems: std.ArrayList(Schedule),
 
@@ -60,6 +62,7 @@ allocator: std.mem.Allocator,
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
         .setup_systems = .empty,
+        .pre_update_systems = .empty,
         .update_systems = .empty,
         .post_update_systems = .empty,
         .pre_render_systems = .empty,
@@ -187,6 +190,7 @@ pub fn deinitPhase(self: *Self, phase: Phase) void {
 pub fn getPhase(self: *Self, phase: Phase) *std.ArrayList(Schedule) {
     return switch (phase) {
         .setup => &self.setup_systems,
+        .pre_update => &self.pre_update_systems,
         .update => &self.update_systems,
         .post_update => &self.post_update_systems,
         .pre_render => &self.pre_render_systems,

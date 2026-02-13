@@ -113,11 +113,12 @@ pub const Game = struct {
     ///
     /// Useful for testing systems.
     pub fn runHeadlessOnce(self: *Self) !void {
-        self.schedule.runPhase(.update, self);
-        self.schedule.runPhase(.post_update, self);
-        self.schedule.runPhase(.render, self);
-        self.schedule.runPhase(.post_render, self);
-        self.schedule.runPhase(.tear_down, self);
+        try self.schedule.runPhase(.pre_update, self);
+        try self.schedule.runPhase(.update, self);
+        try self.schedule.runPhase(.post_update, self);
+        try self.schedule.runPhase(.render, self);
+        try self.schedule.runPhase(.post_render, self);
+        try self.schedule.runPhase(.tear_down, self);
     }
 
     pub fn run(self: *Self) !void {
@@ -125,6 +126,7 @@ pub const Game = struct {
 
         while (!self.should_close) {
             // const start = try std.time.Instant.now();
+            try self.schedule.runPhase(.pre_update, self);
             try self.schedule.runPhase(.update, self);
             try self.schedule.runPhase(.post_update, self);
 
@@ -142,21 +144,13 @@ pub const Game = struct {
     pub fn installRuntime(self: *Self) !void {
         try self.type_registry.registerStdTypes();
         try self.schedule.addDefaultSchedule();
-        try self.addResource(runtime.allocators.GlobalAllocator{
-            .allocator = self.allocator,
-        });
-        try self.addResource(runtime.allocators.FrameAllocator{
-            .allocator = self.frame_allocator.allocator(),
-            .arena = &self.frame_allocator,
-        });
+        try runtime.install(self);
         try self.addResource(GameActions{
             .should_close = false,
             .log = &.{},
         });
 
         try self.type_registry.registerType(GameActions);
-        try self.type_registry.registerType(runtime.allocators.GlobalAllocator);
-        try self.type_registry.registerType(runtime.allocators.FrameAllocator);
         try self.type_registry.registerType(ecs.resource.ResourceMarker);
         try self.type_registry.registerType(commands);
         try self.addResource(commands.init(self));
@@ -164,11 +158,7 @@ pub const Game = struct {
             ecs.system.labeledSystem("core.applyGameActions", applyGameActions),
             ecs.system.labeledSystem("commands.create_entities", commands_system.create_entities),
         });
-        try self.addSystems(.tear_down, &.{
-            ecs.system.labeledSystem("runtime.allocators.freeFrameAllocator", runtime.allocators.freeFrameAllocator),
-        });
         try core.install(self);
-        try runtime.one_shot.install(self);
     }
 
     pub fn exportComponent(self: *Self, comptime Comp: type) void {
