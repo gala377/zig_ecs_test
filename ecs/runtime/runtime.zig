@@ -10,6 +10,7 @@ pub const one_shot = @import("oneshot_scheduler.zig");
 pub const wrappers = @import("wrappers.zig");
 pub const GlobalTimer = @import("global_timer.zig");
 pub const PhaseExecutionTimer = @import("phase_execution_time.zig");
+pub const SystemExecutionTime = @import("system_execution_time.zig");
 
 pub fn install(game: *ecs.Game) !void {
     try game.addResource(allocators.GlobalAllocator{

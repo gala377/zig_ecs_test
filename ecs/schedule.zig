@@ -29,9 +29,17 @@ pub const Schedule = struct {
     name: []const u8,
     systems: std.ArrayList(System),
 
-    pub fn run(self: *const @This(), game: *Game) anyerror!void {
+    pub fn run(self: *const @This(), phase: Phase, game: *Game) anyerror!void {
         for (self.systems.items) |s| {
+            const start = std.time.nanoTimestamp();
             try s.run(game);
+            const end = std.time.nanoTimestamp();
+            try game.schedule.system_execution_time.recordSys(
+                phase,
+                self.identifier,
+                s,
+                .{ .nano = @intCast(end - start) },
+            );
         }
     }
 
@@ -58,6 +66,7 @@ tear_down_systems: std.ArrayList(Schedule),
 close_systems: std.ArrayList(Schedule),
 
 allocator: std.mem.Allocator,
+system_execution_time: ecs.runtime.SystemExecutionTime,
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
@@ -71,6 +80,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
         .tear_down_systems = .empty,
         .close_systems = .empty,
         .allocator = allocator,
+        .system_execution_time = .init(allocator),
     };
 }
 
@@ -176,7 +186,7 @@ pub fn add(self: *Self, phase: Phase, sys: System) !void {
 pub fn runPhase(self: *Self, phase: Phase, game: *Game) anyerror!void {
     const schedule = self.getPhase(phase);
     for (schedule.items) |s| {
-        try s.run(game);
+        try s.run(phase, game);
     }
 }
 pub fn deinitPhase(self: *Self, phase: Phase) void {
@@ -205,4 +215,5 @@ pub fn deinit(self: *Self) void {
     inline for (@typeInfo(Phase).@"enum".fields) |f| {
         self.deinitPhase(@enumFromInt(f.value));
     }
+    self.system_execution_time.deinit();
 }

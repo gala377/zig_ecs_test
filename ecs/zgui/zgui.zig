@@ -63,6 +63,7 @@ pub fn install(game: *Game) !void {
         ecs.system.labeledSystem("ecs.zgui.editor.showEntityDetails", editor.showEntityDetails),
         ecs.system.labeledSystem("ecs.zgui.editor.allResources", editor.allResources),
         ecs.system.labeledSystem("ecs.zgui.editor.printPhaseTimes", editor.printPhaseTimes),
+        ecs.system.labeledSystem("ecs.zgui.editor.plotSystems", editor.plotSystems),
     });
 }
 

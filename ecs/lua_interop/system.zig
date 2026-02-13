@@ -45,7 +45,11 @@ pub const LuaSystemErrors = error{
     stackEmpty,
 };
 
-fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSystemErrors!struct { system: lua.Ref, components: [][]ComponentId, system_name: []const u8 } {
+fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSystemErrors!struct {
+    system: lua.Ref,
+    components: [][]ComponentId,
+    system_name: []const u8,
+} {
     const startStackSize = state.stackSize();
     std.debug.assert(startStackSize > 0);
     if (lua.clib.lua_type(@ptrCast(state.state), -1) != lua.clib.LUA_TTABLE) {
@@ -123,8 +127,20 @@ fn readComponentsFromLau(state: lua.State, allocator: std.mem.Allocator) LuaSyst
 
 pub fn run(self: *Self, game: *Game) !void {
     const state = game.lua_state;
+    const initial_top = lua.clib.lua_gettop(state.state);
+    defer {
+        lua.clib.lua_settop(state.state, initial_top);
+        // call gc for consistent execution times
+        _ = lua.clib.lua_gc(state.state, lua.clib.LUA_GCSTEP, @as(c_int, 0));
+    }
     for (self.components, 0..) |q, i| {
-        self.scopes[i] = try game.dynamicQueryScopeOpts(q, &.{}, .{ .allocator = self.iters_allocator.allocator() });
+        self.scopes[i] = try game.dynamicQueryScopeOpts(
+            q,
+            &.{},
+            .{
+                .allocator = self.iters_allocator.allocator(),
+            },
+        );
     }
     for (self.scopes, 0..) |*s, i| {
         self.iters[i] = s.iter();
@@ -139,16 +155,20 @@ pub fn run(self: *Self, game: *Game) !void {
         iter.luaPush(@ptrCast(state.state), self.allocator);
     }
     // safe call
-    const call_res = lua.clib.lua_pcallk(@ptrCast(state.state), @as(c_int, @intCast(self.iters.len)), 0, errfuncIndex, 0, null);
+    const call_res = lua.clib.lua_pcallk(
+        @ptrCast(state.state),
+        @as(c_int, @intCast(self.iters.len)),
+        0,
+        errfuncIndex,
+        0,
+        null,
+    );
     // unsafe call, probably should allow in release
     //lua.clib.lua_callk(state.state, @intCast(self.iters.len), 0, 0, null);
     if (call_res != lua.clib.LUA_OK) {
         const errMsg = lua.clib.lua_tolstring(@ptrCast(state.state), -1, null);
         std.debug.print("ERROR[{s}] - Lua Error:\n{s}\n", .{ self.name, errMsg });
-        try state.pop();
     }
-    // pop error handler
-    try state.pop();
 
     if (!self.iters_allocator.reset(.retain_capacity)) {
         return error.couldNotResetAllocator;

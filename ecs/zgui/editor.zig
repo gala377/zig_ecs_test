@@ -925,3 +925,66 @@ pub fn drawEnumDropdown(
     }
     zgui.popId();
 }
+
+pub fn plotSystems(game: *Game) !void {
+    const schedule = &game.schedule;
+    const readings = &game.schedule.system_execution_time;
+    const allocator = game.allocator;
+    if (zgui.begin("system_times", .{})) {
+        for (std.enums.values(ecs.Schedule.Phase)) |phase| {
+            if (zgui.treeNode(@tagName(phase))) {
+                const phase_readings = readings.phases.getPtr(phase);
+                const phase_schedule = schedule.getPhase(phase);
+                for (phase_schedule.items) |current_schedule| {
+                    const label = try allocator.dupeZ(u8, current_schedule.name);
+                    defer allocator.free(label);
+                    if (zgui.treeNode(label)) {
+                        const schedule_readings = phase_readings.schedule_readings.getPtr(
+                            current_schedule.identifier,
+                        );
+                        if (schedule_readings) |system_readings| {
+                            var systems = system_readings.readings.iterator();
+                            if (zgui.plot.beginPlot("system times", .{})) {
+                                zgui.plot.setupAxis(.x1, .{ .label = "time" });
+                                zgui.plot.setupAxisLimits(
+                                    .x1,
+                                    .{ .min = 1.0, .max = @floatFromInt(ecs.runtime.PhaseExecutionTimer.SAMPLE_COUNT) },
+                                );
+                                zgui.plot.setupAxis(.y1, .{ .label = "execution time" });
+                                zgui.plot.setupAxisLimits(.y1, .{ .min = 0.0, .max = 100.0 });
+                                zgui.plot.setupLegend(.{ .south = true, .west = true }, .{});
+                                zgui.plot.setupFinish();
+
+                                while (systems.next()) |entry| {
+                                    const plot_label = try allocator.dupeZ(u8, entry.value_ptr.name);
+                                    defer allocator.free(plot_label);
+
+                                    const ordered = try entry.value_ptr.reading.readingsOrdered(allocator);
+                                    defer allocator.free(ordered);
+
+                                    const asfloat = try allocator.alloc(f64, ordered.len);
+                                    defer allocator.free(asfloat);
+
+                                    for (ordered, 0..) |o, index| {
+                                        asfloat[index] = o.toMilis();
+                                    }
+
+                                    zgui.plot.plotLineValues(plot_label, f64, .{
+                                        .v = asfloat,
+                                    });
+                                }
+
+                                zgui.plot.endPlot();
+                            }
+                        } else {
+                            zgui.text("No readings for this schedule", .{});
+                        }
+                        zgui.treePop();
+                    }
+                }
+                zgui.treePop();
+            }
+        }
+    }
+    zgui.end();
+}

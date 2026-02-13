@@ -663,6 +663,7 @@ pub const DynamicQuery = struct {
     global_components: DynamicQueryIter,
     scene_components: ?DynamicQueryIter,
     allocator: std.mem.Allocator,
+    lua_components_table: c_int = 0,
 
     pub fn init(global_components: DynamicQueryIter, scene_components: ?DynamicQueryIter, allocator: std.mem.Allocator) Self {
         return .{
@@ -702,6 +703,12 @@ pub const DynamicQuery = struct {
         if (clua.lua_setmetatable(state, -2) != 0) {
             // @panic("object " ++ @typeName(T) ++ " already had a metatable");
         }
+        clua.lua_createtable(
+            state,
+            @intCast(self.global_components.component_ids.len),
+            0,
+        );
+        self.lua_components_table = clua.luaL_ref(state, clua.LUA_REGISTRYINDEX);
     }
 
     pub fn luaNext(state: *clua.lua_State) callconv(.c) c_int {
@@ -719,12 +726,7 @@ pub const DynamicQuery = struct {
         // get component pointers
         const components = rest.?;
 
-        // create a table on the stack for components
-        clua.lua_createtable(
-            state,
-            @intCast(components.len),
-            0,
-        );
+        _ = clua.lua_rawgeti(state, clua.LUA_REGISTRYINDEX, self.lua_components_table);
 
         for (components, 1..) |comp, idx| {
             comp.push(

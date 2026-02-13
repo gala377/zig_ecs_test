@@ -13,7 +13,7 @@ pub const GlobalNanos = struct {
 
 pub const Reading = struct {
     // aproximately 60 seconds as we try to run 60 fps
-    readings: [SAMPLE_COUNT]ecs.core.Duration,
+    readings: [SAMPLE_COUNT]ecs.core.Duration = undefined,
     index: usize = 0,
     read_once: bool = false,
 

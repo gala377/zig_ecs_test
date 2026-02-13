@@ -17,13 +17,9 @@ end
 local function click_run(buttons, foos, _)
 	for button in query.iter(buttons) do
 		if button.clicked then
-			--print("Button clicked from lua")
-			--print("got at position " .. tostring(button.pos.x) .. ", " .. tostring(button.pos.y))
 			local foo = query.assertSingle(foos)
 			if foo ~= nil then
 				local bar = foo.bar
-				--	print("foo info " .. tostring(bar.x) .. ", " .. tostring(bar.y))
-				--	print("calling foo methods " .. tostring(foo:getX()) .. " " .. tostring(foo:getY()))
 				bar.x = bar.x + 1
 				foo:setBar { x = bar.x + 1, y = bar.y }
 			end
