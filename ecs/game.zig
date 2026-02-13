@@ -664,8 +664,13 @@ pub const DynamicQuery = struct {
     scene_components: ?DynamicQueryIter,
     allocator: std.mem.Allocator,
     lua_components_table: c_int = 0,
+    lua_component_proxies: []c_int = &.{},
 
-    pub fn init(global_components: DynamicQueryIter, scene_components: ?DynamicQueryIter, allocator: std.mem.Allocator) Self {
+    pub fn init(
+        global_components: DynamicQueryIter,
+        scene_components: ?DynamicQueryIter,
+        allocator: std.mem.Allocator,
+    ) Self {
         return .{
             .global_components = global_components,
             .scene_components = scene_components,
@@ -727,14 +732,28 @@ pub const DynamicQuery = struct {
         const components = rest.?;
 
         _ = clua.lua_rawgeti(state, clua.LUA_REGISTRYINDEX, self.lua_components_table);
-
-        for (components, 1..) |comp, idx| {
-            comp.push(
-                comp.pointer,
-                state,
-                self.allocator,
-            );
-            clua.lua_seti(state, -2, @intCast(idx));
+        if (self.lua_component_proxies.len == 0) {
+            self.lua_component_proxies = self.allocator.alloc(c_int, components.len) catch {
+                @panic("oom");
+            };
+            for (components, 1..) |comp, idx| {
+                comp.push(
+                    comp.pointer,
+                    state,
+                    self.allocator,
+                );
+                const c_ref = clua.luaL_ref(state, clua.LUA_REGISTRYINDEX);
+                self.lua_component_proxies[idx - 1] = c_ref;
+            }
+        }
+        for (components, 0..) |comp, idx| {
+            // get component proxy from registry and swap the pointer
+            _ = clua.lua_rawgeti(state, clua.LUA_REGISTRYINDEX, self.lua_component_proxies[idx]);
+            const raw = clua.lua_touserdata(state, -1) orelse @panic("not userdata");
+            const as_wrapper: *utils.ZigPointer(anyopaque) = @ptrCast(@alignCast(raw));
+            as_wrapper.ptr = comp.pointer;
+            // now we can set it in table
+            clua.lua_seti(state, -2, @intCast(idx + 1));
         }
         self.allocator.free(components);
         return 1;
@@ -770,6 +789,16 @@ pub const DynamicQuery = struct {
                 lua.clib.LUA_REGISTRYINDEX,
                 self.lua_components_table,
             );
+        }
+        if (self.lua_component_proxies.len > 0) {
+            for (self.lua_component_proxies) |proxy| {
+                lua.clib.luaL_unref(
+                    state.state,
+                    lua.clib.LUA_REGISTRYINDEX,
+                    proxy,
+                );
+            }
+            self.allocator.free(self.lua_component_proxies);
         }
     }
 };
