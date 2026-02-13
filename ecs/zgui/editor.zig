@@ -13,11 +13,11 @@ pub const EntityDetailsView = struct {
 };
 
 pub fn showEntityDetails(game: *Game) anyerror!void {
+    const allocator = game.frame_allocator.allocator();
     const primitives = game.getResource(PrimiteTypeStorage);
     const commands = game.getResource(ecs.runtime.commands);
     const type_registry = &game.type_registry;
     var remove_views: std.ArrayList(entity.Id) = .empty;
-    defer remove_views.deinit(game.allocator);
     const scene = if (game.current_scene) |*s| s else null;
     var views = game.query(.{ ecs.entity.Id, EntityDetailsView }, .{});
     var entity_index: usize = 0;
@@ -40,7 +40,7 @@ pub fn showEntityDetails(game: *Game) anyerror!void {
                     game.allocator,
                     primitives.get(),
                 )) {
-                    try remove_views.append(game.allocator, view.*);
+                    try remove_views.append(allocator, view.*);
                 }
             } else {
                 if (try showEmptyWindow(
@@ -49,7 +49,7 @@ pub fn showEntityDetails(game: *Game) anyerror!void {
                     "Entity has been deleted",
                     game.allocator,
                 )) {
-                    try remove_views.append(game.allocator, view.*);
+                    try remove_views.append(allocator, view.*);
                 }
             }
         } else {
@@ -65,19 +65,19 @@ pub fn showEntityDetails(game: *Game) anyerror!void {
                             record,
                             type_registry,
                             storage,
-                            game.allocator,
+                            allocator,
                             primitives.get(),
                         )) {
-                            try remove_views.append(game.allocator, view.*);
+                            try remove_views.append(allocator, view.*);
                         }
                     } else {
                         if (try showEmptyWindow(
                             e,
                             entity_index,
                             "Entity has been deleted",
-                            game.allocator,
+                            allocator,
                         )) {
-                            try remove_views.append(game.allocator, view.*);
+                            try remove_views.append(allocator, view.*);
                         }
                     }
                 } else {
@@ -85,9 +85,9 @@ pub fn showEntityDetails(game: *Game) anyerror!void {
                         e,
                         entity_index,
                         "Active scene is not the same as entities scene",
-                        game.allocator,
+                        allocator,
                     )) {
-                        try remove_views.append(game.allocator, view.*);
+                        try remove_views.append(allocator, view.*);
                     }
                 }
             } else {
@@ -95,9 +95,9 @@ pub fn showEntityDetails(game: *Game) anyerror!void {
                     e,
                     entity_index,
                     "This is a scene entity but there is no scene active",
-                    game.allocator,
+                    allocator,
                 )) {
-                    try remove_views.append(game.allocator, view.*);
+                    try remove_views.append(allocator, view.*);
                 }
             }
         }
@@ -206,9 +206,10 @@ pub fn allResources(game: *Game, commands: ecs.runtime.commands.Commands) anyerr
         const scene_archetypes = game.current_scene.?.entity_storage.archetypes;
         const global_archetypes = game.global_entity_storage.archetypes;
         const primitives = game.getResource(PrimiteTypeStorage);
+        const allocator = game.frame_allocator.allocator();
         try printResourceFromArchetype(
             global_archetypes.items,
-            game.allocator,
+            allocator,
             type_registry,
             "global",
             0,
@@ -217,7 +218,7 @@ pub fn allResources(game: *Game, commands: ecs.runtime.commands.Commands) anyerr
         );
         try printResourceFromArchetype(
             scene_archetypes.items,
-            game.allocator,
+            allocator,
             type_registry,
             "scene",
             @intCast(game.current_scene.?.id),
@@ -575,17 +576,18 @@ fn printReading(
 }
 
 pub fn allSystems(game: *Game) anyerror!void {
+    const allocator = game.frame_allocator.allocator();
     const schedule: *ecs.Schedule = &game.schedule;
     if (zgui.begin("systems", .{})) {
-        try printPhase(.setup, schedule, game.allocator);
-        try printPhase(.pre_update, schedule, game.allocator);
-        try printPhase(.update, schedule, game.allocator);
-        try printPhase(.post_update, schedule, game.allocator);
-        try printPhase(.pre_render, schedule, game.allocator);
-        try printPhase(.render, schedule, game.allocator);
-        try printPhase(.post_render, schedule, game.allocator);
-        try printPhase(.tear_down, schedule, game.allocator);
-        try printPhase(.close, schedule, game.allocator);
+        try printPhase(.setup, schedule, allocator);
+        try printPhase(.pre_update, schedule, allocator);
+        try printPhase(.update, schedule, allocator);
+        try printPhase(.post_update, schedule, allocator);
+        try printPhase(.pre_render, schedule, allocator);
+        try printPhase(.render, schedule, allocator);
+        try printPhase(.post_render, schedule, allocator);
+        try printPhase(.tear_down, schedule, allocator);
+        try printPhase(.close, schedule, allocator);
     }
     zgui.end();
 }
@@ -938,7 +940,7 @@ pub fn drawEnumDropdown(
 pub fn plotSystems(game: *Game) !void {
     const schedule = &game.schedule;
     const readings = &game.schedule.system_execution_time;
-    const allocator = game.allocator;
+    const allocator = game.frame_allocator.allocator();
     if (zgui.begin("system_times", .{})) {
         for (std.enums.values(ecs.Schedule.Phase)) |phase| {
             if (zgui.treeNode(@tagName(phase))) {
@@ -1012,6 +1014,50 @@ pub fn plotSystems(game: *Game) !void {
                 }
                 zgui.treePop();
             }
+        }
+    }
+    zgui.end();
+}
+
+pub fn luaMemoryUsage(game: *Game) !void {
+    const usage = game.getResource(ecs.runtime.LuaMemoryUsage).get();
+    const allocator = game.frame_allocator.allocator();
+
+    if (zgui.begin("memory usage", .{})) {
+        if (usage.read_once and zgui.plot.beginPlot("lua", .{})) {
+            zgui.plot.setupAxis(
+                .x1,
+                .{
+                    .label = "time",
+                    .flags = .{
+                        .auto_fit = true,
+                    },
+                },
+            );
+            zgui.plot.setupAxisLimits(
+                .x1,
+                .{ .min = 0.0, .max = @floatFromInt(ecs.runtime.LuaMemoryUsage.SAMPLE_COUNT) },
+            );
+            zgui.plot.setupAxis(
+                .y1,
+                .{
+                    .label = "memory kB",
+                    .flags = .{
+                        .auto_fit = true,
+                    },
+                },
+            );
+            zgui.plot.setupAxisLimits(.y1, .{ .min = 0.0, .max = 10000.0 });
+            zgui.plot.setupLegend(
+                .{ .north = true },
+                .{ .outside = true, .horizontal = true },
+            );
+            zgui.plot.setupFinish();
+
+            const data = try usage.samplesOrdered(allocator);
+            zgui.plot.plotLineValues("lua", u32, .{ .v = data });
+
+            zgui.plot.endPlot();
         }
     }
     zgui.end();

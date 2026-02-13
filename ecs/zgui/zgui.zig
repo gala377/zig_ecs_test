@@ -66,6 +66,7 @@ pub fn install(game: *Game) !void {
         ecs.system.labeledSystem("ecs.zgui.editor.allResources", editor.allResources),
         ecs.system.labeledSystem("ecs.zgui.editor.printPhaseTimes", editor.printPhaseTimes),
         ecs.system.labeledSystem("ecs.zgui.editor.plotSystems", editor.plotSystems),
+        ecs.system.labeledSystem("ecs.zgui.editor.luaMemoryUsage", editor.luaMemoryUsage),
     });
     try game.addResource(WindowSize{ .width = 0, .height = 0, .changed = false });
     try game.addLabeledSystemToSchedule(.pre_render, ZguiSchedule{}, "ecs.zgui.updatewindowSize", WindowSize.update);

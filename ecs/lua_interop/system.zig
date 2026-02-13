@@ -130,7 +130,7 @@ pub fn run(self: *Self, game: *Game) !void {
     const initial_top = lua.clib.lua_gettop(state.state);
     defer {
         lua.clib.lua_settop(state.state, initial_top);
-        // call gc for consistent execution times
+        // ask gc to make one step and cleanup stack frames
         _ = lua.clib.lua_gc(state.state, lua.clib.LUA_GCSTEP, @as(c_int, 0));
     }
     for (self.components, 0..) |q, i| {
