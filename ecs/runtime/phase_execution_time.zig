@@ -4,7 +4,7 @@ const Self = @This();
 
 pub const component_info = ecs.Component(Self);
 
-pub const SAMPLE_COUNT = 1000;
+pub const SAMPLE_COUNT = 144 * 5;
 
 pub const GlobalNanos = struct {
     pub const component_info = ecs.Component(GlobalNanos);

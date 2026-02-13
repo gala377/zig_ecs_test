@@ -42,7 +42,7 @@ fn runGame(allocator: std.mem.Allocator) !void {
         &game,
         true,
         .{
-            .targetFps = 0,
+            .targetFps = 144,
             .title = "Hello?",
             .size = .{
                 .width = 1080,

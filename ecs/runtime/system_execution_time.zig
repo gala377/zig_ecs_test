@@ -78,7 +78,7 @@ pub fn recordSys(
         system.name,
         phase,
         schedule,
-        @intFromPtr(system.vtable.run),
+        @intFromPtr(system.name.ptr),
         value,
     );
 }

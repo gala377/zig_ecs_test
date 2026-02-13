@@ -36,7 +36,7 @@ local function change_title(buttons)
 end
 
 return {
-	system.new(click_run, "click logger"):arguments({ Button }, { Foo }, GameActions),
-	system.new(close_run, "close on click"):arguments({ Button, ButtonClose }, GameActions),
-	system.new(change_title, "change button title"):arguments { Button, ButtonOpen },
+	system.new(click_run, "logic.lua.click_logger"):arguments({ Button }, { Foo }, GameActions),
+	system.new(close_run, "logic.lua.close_on_script"):arguments({ Button, ButtonClose }, GameActions),
+	system.new(change_title, "logic.lua.change_title"):arguments { Button, ButtonOpen },
 }

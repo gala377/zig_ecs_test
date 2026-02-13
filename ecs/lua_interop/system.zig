@@ -202,7 +202,7 @@ pub fn intoSystem(self: Self) !System {
     const alloc = try self.allocator.create(Self);
     alloc.* = self;
     return .{
-        .name = "lua",
+        .name = alloc.name,
         .context = @ptrCast(alloc),
         .vtable = &.{
             .run = &systemRun,
@@ -222,7 +222,8 @@ fn systemRun(context: ?*anyopaque, game: *Game) anyerror!void {
     return self.run(game);
 }
 
-fn systemDeinit(context: ?*anyopaque) void {
+fn systemDeinit(context: ?*anyopaque, name: []const u8) void {
+    _ = name;
     const self = @as(*Self, @ptrCast(@alignCast(context)));
     self.deinit();
     self.allocator.destroy(self);

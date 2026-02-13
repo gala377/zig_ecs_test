@@ -290,10 +290,14 @@ fn printFromArchetype(
                     });
                 }
                 zgui.sameLine(.{});
+                zgui.pushStyleColor4f(.{ .idx = .button, .c = .{ 0.6, 0.1, 0.3, 1.0 } }); // Red
+                zgui.pushStyleColor4f(.{ .idx = .button_hovered, .c = .{ 1.0, 0.2, 0.2, 1.0 } }); // Lighter Red
+                zgui.pushStyleColor4f(.{ .idx = .button_active, .c = .{ 0.3, 0.0, 0.0, 1.0 } }); // Darker Red
                 if (zgui.smallButton("X")) {
                     std.debug.print("Adding entity to remove {any}\n", .{entity_id});
                     try commands.get().removeEntity(entity_id);
                 }
+                zgui.popStyleColor(.{ .count = 3 });
                 zgui.sameLine(.{});
                 const show_entity = zgui.treeNode(entity_label);
                 if (zgui.beginPopupContextItem()) {

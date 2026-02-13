@@ -4,7 +4,7 @@ const lua = @import("lua_lib");
 
 const Self = @This();
 
-pub const SAMPLE_COUNT = 1000;
+pub const SAMPLE_COUNT = 144 * 5;
 
 pub const component_info = ecs.Component(Self);
 

@@ -7,7 +7,7 @@ const Game = ecs.Game;
 
 pub const SystemVTable = struct {
     run: *const fn (?*anyopaque, *Game) anyerror!void,
-    deinit: *const fn (?*anyopaque) void,
+    deinit: *const fn (?*anyopaque, []const u8) void,
     subsystems: *const fn (?*anyopaque) []const System,
 };
 
@@ -24,7 +24,7 @@ pub const System = struct {
     }
 
     pub fn deinit(self: *const Self) void {
-        self.vtable.deinit(self.context);
+        self.vtable.deinit(self.context, self.name);
     }
 
     pub fn subsystems(self: *const Self) []const System {
@@ -70,7 +70,8 @@ const ConditionalContext = struct {
     inner_system: System,
     allocator: std.mem.Allocator,
 
-    pub fn deinit(ptr: ?*anyopaque) void {
+    pub fn deinit(ptr: ?*anyopaque, name: []const u8) void {
+        _ = name;
         const context: *ConditionalContext = @ptrCast(@alignCast(ptr.?));
         context.inner_system.deinit();
         context.allocator.destroy(context);
@@ -88,7 +89,8 @@ const ChainContext = struct {
         }
     }
 
-    pub fn deinit(ptr: ?*anyopaque) void {
+    pub fn deinit(ptr: ?*anyopaque, name: []const u8) void {
+        _ = name;
         const context: *ChainContext = @ptrCast(@alignCast(ptr.?));
         for (context.systems) |sys| {
             sys.deinit();
@@ -120,7 +122,8 @@ pub fn chain(allocator: std.mem.Allocator, systems: []const System) !System {
     };
 }
 
-fn ignore(context: ?*anyopaque) void {
+fn ignore(context: ?*anyopaque, name: []const u8) void {
+    _ = name;
     _ = context;
 }
 
@@ -241,7 +244,8 @@ const ConcurrentContext = struct {
         }
     }
 
-    pub fn deinit(ptr: ?*anyopaque) void {
+    pub fn deinit(ptr: ?*anyopaque, name: []const u8) void {
+        _ = name;
         const context: *ConcurrentContext = @ptrCast(@alignCast(ptr.?));
         for (context.systems) |sys| {
             sys.deinit();

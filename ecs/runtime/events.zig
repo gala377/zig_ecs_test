@@ -104,7 +104,8 @@ pub fn EventWriter(comptime T: type) type {
     };
 }
 
-fn ignore(context: ?*anyopaque) void {
+fn ignore(context: ?*anyopaque, name: []const u8) void {
+    _ = name;
     _ = context;
 }
 
