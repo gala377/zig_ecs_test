@@ -57,7 +57,10 @@ pub fn install(game: *Game, options: WindowOptions, show_fps: bool) !void {
 
 fn initWindow(window_options: Resource(WindowOptions)) void {
     const options = window_options.get();
-    rl.setConfigFlags(.{ .window_highdpi = true });
+    rl.setConfigFlags(.{
+        //.window_highdpi = true,
+        .window_resizable = true,
+    });
     rl.setTargetFPS(options.targetFps);
     rl.initWindow(
         options.size.width,

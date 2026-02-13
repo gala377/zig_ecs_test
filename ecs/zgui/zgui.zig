@@ -57,6 +57,8 @@ pub fn install(game: *Game) !void {
 
     try game.addResource(try editor.PrimiteTypeStorage.init(game.allocator));
     try game.type_registry.registerType(editor.EntityDetailsView);
+    try game.type_registry.registerType(WindowSize);
+
     try game.addSystems(.render, &.{
         ecs.system.labeledSystem("ecs.zgui.editor.allEntities", editor.allEntities),
         ecs.system.labeledSystem("ecs.zgui.editor.allSystems", editor.allSystems),
@@ -65,6 +67,8 @@ pub fn install(game: *Game) !void {
         ecs.system.labeledSystem("ecs.zgui.editor.printPhaseTimes", editor.printPhaseTimes),
         ecs.system.labeledSystem("ecs.zgui.editor.plotSystems", editor.plotSystems),
     });
+    try game.addResource(WindowSize{ .width = 0, .height = 0, .changed = false });
+    try game.addLabeledSystemToSchedule(.pre_render, ZguiSchedule{}, "ecs.zgui.updatewindowSize", WindowSize.update);
 }
 
 fn zguiBegin() void {
@@ -75,10 +79,10 @@ fn zguiEnd() void {
     ri.rlImGuiEnd();
 }
 
-fn zguiDockSpace() void {
-    const viewport = zgui.getMainViewport();
-
+fn zguiDockSpace(window: Resource(WindowSize)) void {
+    _ = window;
     // 1. Position the window to match the main viewport
+    const viewport = zgui.getMainViewport();
     zgui.setNextWindowPos(.{ .x = viewport.pos[0], .y = viewport.pos[1] });
     zgui.setNextWindowSize(.{ .w = viewport.size[0], .h = viewport.size[1] });
     zgui.setNextWindowViewport(viewport.id);
@@ -91,6 +95,7 @@ fn zguiDockSpace() void {
         .no_bring_to_front_on_focus = true,
         .no_nav_focus = true,
         .no_background = true,
+        .always_auto_resize = true,
     };
     zgui.pushStyleVar1f(.{ .idx = .window_rounding, .v = 0.0 });
     zgui.pushStyleVar1f(.{ .idx = .window_border_size, .v = 0.0 });
@@ -105,15 +110,42 @@ fn zguiDockSpaceEnd() void {
 }
 
 fn initZgui(allocator: Resource(GlobalAllocator)) void {
-    ri.rlImGuiSetup(true);
-    const context = ri.rlGetCurrentContext() orelse @panic("context is null");
-    zgui.initWithExistingContext(allocator.get().allocator, @ptrCast(@alignCast(context)));
+    ri.rlImGuiBeginInitImGui();
+    // ri.rlImGuiSetup(true);
+    zgui.initNoContext(allocator.inner.allocator);
     _ = zgui.io.addFontDefault(null);
-    zgui.io.setConfigFlags(.{ .dock_enable = true });
+    zgui.io.setConfigFlags(.{
+        .dock_enable = true,
+        .viewport_enable = true,
+        .dpi_enable_scale_viewport = true,
+        .dpi_enable_scale_fonts = true,
+    });
+    //zgui.io.setDisplayFramebufferScale(rl.getWindowScaleDPI().x, rl.getWindowScaleDPI().y);
     zgui.plot.init();
+    ri.rlImGuiEndInitImGui();
 }
 
 fn deinitZgui() void {
     zgui.plot.deinit();
-    zgui.deinit();
+    zgui.deinitNoContext();
 }
+
+pub const WindowSize = struct {
+    pub const component_info = ecs.Component(WindowSize);
+
+    width: i32,
+    height: i32,
+    changed: bool = false,
+
+    pub fn update(self: Resource(WindowSize)) void {
+        const h = rl.getScreenHeight();
+        const w = rl.getScreenWidth();
+        if (self.inner.height != h or self.inner.width != w) {
+            self.inner.height = h;
+            self.inner.width = w;
+            self.inner.changed = true;
+        } else {
+            self.inner.changed = false;
+        }
+    }
+};

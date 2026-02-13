@@ -145,6 +145,15 @@ pub fn run(self: *Self, game: *Game) !void {
     for (self.scopes, 0..) |*s, i| {
         self.iters[i] = s.iter();
     }
+
+    defer {
+        for (self.scopes) |*scope| {
+            scope.deinit();
+        }
+        for (self.iters) |*iter| {
+            iter.deinit(state);
+        }
+    }
     // install error handler
     _ = lua.clib.lua_getglobal(@ptrCast(state.state), "debug");
     _ = lua.clib.lua_getfield(@ptrCast(state.state), -1, "traceback"); // push debug.traceback

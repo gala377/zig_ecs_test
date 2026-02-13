@@ -514,14 +514,23 @@ pub fn printPhaseTimes(
         zgui.separator();
         if (zgui.collapsingHeader("plot", .{})) {
             if (zgui.plot.beginPlot("phase times", .{})) {
-                zgui.plot.setupAxis(.x1, .{ .label = "time" });
+                zgui.plot.setupAxis(.x1, .{ .label = "time", .flags = .{
+                    .auto_fit = true,
+                } });
                 zgui.plot.setupAxisLimits(
                     .x1,
                     .{ .min = 1.0, .max = @floatFromInt(ecs.runtime.PhaseExecutionTimer.SAMPLE_COUNT) },
                 );
-                zgui.plot.setupAxis(.y1, .{ .label = "execution time" });
-                zgui.plot.setupAxisLimits(.y1, .{ .min = 0.0, .max = 100.0 });
-                zgui.plot.setupLegend(.{ .south = true, .west = true }, .{});
+                zgui.plot.setupAxis(.y1, .{ .label = "execution time", .flags = .{
+                    .auto_fit = true,
+                } });
+                zgui.plot.setupAxisLimits(.y1, .{
+                    .min = 0.0,
+                    .max = 100.0,
+                });
+                zgui.plot.setupLegend(.{
+                    .south = true,
+                }, .{ .outside = true, .horizontal = true });
                 zgui.plot.setupFinish();
                 inline for (std.meta.fields(ecs.Schedule.Phase)) |field| {
                     try printPlot(reading, @enumFromInt(field.value), global_allocator.get().allocator);
@@ -945,14 +954,33 @@ pub fn plotSystems(game: *Game) !void {
                         if (schedule_readings) |system_readings| {
                             var systems = system_readings.readings.iterator();
                             if (zgui.plot.beginPlot("system times", .{})) {
-                                zgui.plot.setupAxis(.x1, .{ .label = "time" });
+                                zgui.plot.setupAxis(
+                                    .x1,
+                                    .{
+                                        .label = "time",
+                                        .flags = .{
+                                            .auto_fit = true,
+                                        },
+                                    },
+                                );
                                 zgui.plot.setupAxisLimits(
                                     .x1,
                                     .{ .min = 1.0, .max = @floatFromInt(ecs.runtime.PhaseExecutionTimer.SAMPLE_COUNT) },
                                 );
-                                zgui.plot.setupAxis(.y1, .{ .label = "execution time" });
+                                zgui.plot.setupAxis(
+                                    .y1,
+                                    .{
+                                        .label = "execution time",
+                                        .flags = .{
+                                            .auto_fit = true,
+                                        },
+                                    },
+                                );
                                 zgui.plot.setupAxisLimits(.y1, .{ .min = 0.0, .max = 100.0 });
-                                zgui.plot.setupLegend(.{ .south = true, .west = true }, .{});
+                                zgui.plot.setupLegend(
+                                    .{ .west = true },
+                                    .{ .outside = true },
+                                );
                                 zgui.plot.setupFinish();
 
                                 while (systems.next()) |entry| {

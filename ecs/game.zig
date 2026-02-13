@@ -762,4 +762,14 @@ pub const DynamicQuery = struct {
         // Pop metatable
         clua.lua_pop(state, 1);
     }
+
+    pub fn deinit(self: *Self, state: lua.State) void {
+        if (self.lua_components_table != 0) {
+            lua.clib.luaL_unref(
+                state.state,
+                lua.clib.LUA_REGISTRYINDEX,
+                self.lua_components_table,
+            );
+        }
+    }
 };
