@@ -10,5 +10,5 @@ pub const WindowOptions = struct {
 
     title: [:0]const u8,
     size: Size,
-    targetFps: i32 = 60,
+    targetFps: i32 = 0,
 };

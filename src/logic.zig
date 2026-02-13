@@ -492,10 +492,14 @@ fn setup_circle(commands: Commands) !void {
     });
 }
 
-fn move_player_marker(player: *Query(.{ PlayerMarker, Position })) void {
+fn move_player_marker(
+    player: *Query(.{ PlayerMarker, Position }),
+    timer: Resource(ecs.runtime.GlobalTimer),
+) void {
+    const delta = timer.inner.delta().toSeconds();
     while (player.next()) |components| {
         _, const position: *Position = components;
-        position.x -= 1.0;
+        position.x -= 100.0 * @as(f32, @floatCast(delta));
     }
 }
 
