@@ -62,7 +62,7 @@ pub fn install(game: *Game) !void {
         ecs.system.labeledSystem("ecs.zgui.editor.allSystems", editor.allSystems),
         ecs.system.labeledSystem("ecs.zgui.editor.showEntityDetails", editor.showEntityDetails),
         ecs.system.labeledSystem("ecs.zgui.editor.allResources", editor.allResources),
-        ecs.system.labeledSystem("ecs.zgui.editor.printPhaseTtimes", editor.printPhaseTimes),
+        ecs.system.labeledSystem("ecs.zgui.editor.printPhaseTimes", editor.printPhaseTimes),
     });
 }
 
@@ -109,8 +109,10 @@ fn initZgui(allocator: Resource(GlobalAllocator)) void {
     zgui.initWithExistingContext(allocator.get().allocator, @ptrCast(@alignCast(context)));
     _ = zgui.io.addFontDefault(null);
     zgui.io.setConfigFlags(.{ .dock_enable = true });
+    zgui.plot.init();
 }
 
 fn deinitZgui() void {
+    zgui.plot.deinit();
     zgui.deinit();
 }

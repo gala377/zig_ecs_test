@@ -502,50 +502,57 @@ fn printTypeWithName(
     }
 }
 
-pub fn printPhaseTimes(execution_times: ecs.Resource(ecs.runtime.PhaseExecutionTimer)) !void {
+pub fn printPhaseTimes(
+    execution_times: ecs.Resource(ecs.runtime.PhaseExecutionTimer),
+    global_allocator: ecs.Resource(ecs.runtime.allocators.GlobalAllocator),
+) !void {
     if (zgui.begin("phase executions", .{})) {
         const reading = &execution_times.inner.readings;
-        try printReding(
-            reading,
-            .setup,
-        );
-        try printReding(
-            reading,
-            .pre_update,
-        );
-        try printReding(
-            reading,
-            .update,
-        );
-        try printReding(
-            reading,
-            .post_update,
-        );
-        try printReding(
-            reading,
-            .pre_render,
-        );
-        try printReding(
-            reading,
-            .render,
-        );
-        try printReding(
-            reading,
-            .post_render,
-        );
-        try printReding(
-            reading,
-            .tear_down,
-        );
-        try printReding(
-            reading,
-            .close,
-        );
+        inline for (std.meta.fields(ecs.Schedule.Phase)) |field| {
+            try printReading(reading, @enumFromInt(field.value));
+        }
+        zgui.separator();
+        if (zgui.collapsingHeader("plot", .{})) {
+            if (zgui.plot.beginPlot("phase times", .{})) {
+                zgui.plot.setupAxis(.x1, .{ .label = "time" });
+                zgui.plot.setupAxisLimits(
+                    .x1,
+                    .{ .min = 1.0, .max = @floatFromInt(ecs.runtime.PhaseExecutionTimer.SAMPLE_COUNT) },
+                );
+                zgui.plot.setupAxis(.y1, .{ .label = "execution time" });
+                zgui.plot.setupAxisLimits(.y1, .{ .min = 0.0, .max = 100.0 });
+                zgui.plot.setupLegend(.{ .south = true, .west = true }, .{});
+                zgui.plot.setupFinish();
+                inline for (std.meta.fields(ecs.Schedule.Phase)) |field| {
+                    try printPlot(reading, @enumFromInt(field.value), global_allocator.get().allocator);
+                }
+                zgui.plot.endPlot();
+            }
+        }
     }
     zgui.end();
 }
 
-fn printReding(
+fn printPlot(
+    readings: *std.EnumArray(ecs.Schedule.Phase, ecs.runtime.PhaseExecutionTimer.Reading),
+    phase: ecs.Schedule.Phase,
+    allocator: std.mem.Allocator,
+) !void {
+    const read = readings.getPtr(phase);
+    const name = @tagName(phase);
+    if (read.read_once) {
+        const ordered = try read.readingsOrdered(allocator);
+        defer allocator.free(ordered);
+        const asfloat = try allocator.alloc(f64, ordered.len);
+        defer allocator.free(asfloat);
+        for (ordered, 0..) |o, index| {
+            asfloat[index] = o.toMilis();
+        }
+        zgui.plot.plotLineValues(name, f64, .{ .v = asfloat });
+    }
+}
+
+fn printReading(
     readings: *std.EnumArray(ecs.Schedule.Phase, ecs.runtime.PhaseExecutionTimer.Reading),
     phase: ecs.Schedule.Phase,
 ) !void {

@@ -17,6 +17,27 @@ pub const Reading = struct {
     index: usize = 0,
     read_once: bool = false,
 
+    pub fn readingsOrdered(self: *Reading, allocator: std.mem.Allocator) ![]ecs.core.Duration {
+        const res = try allocator.alloc(ecs.core.Duration, SAMPLE_COUNT);
+        var current = self.index;
+        var res_index: usize = 0;
+        while (true) {
+            res[res_index] = self.readings[current];
+            res_index += 1;
+            current += 1;
+            if (res_index == res.len) {
+                break;
+            }
+            if (current == self.index) {
+                break;
+            }
+            if (current == self.readings.len) {
+                current = 0;
+            }
+        }
+        return res;
+    }
+
     pub fn record(self: *Reading, duration: ecs.core.Duration) bool {
         self.readings[self.index] = duration;
         self.index += 1;
